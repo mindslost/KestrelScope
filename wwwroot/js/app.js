@@ -167,27 +167,51 @@ async function initDashboard() {
     if (!service || !metric) return;
 
     const windowText = windowSelect.options[windowSelect.selectedIndex]?.text || `Last ${minutes} Minutes`;
-    document.getElementById('chartTitle').textContent = `${metric} — ${service} (${windowText})`;
 
     try {
       const res = await fetch(`/api/metrics/series?service=${encodeURIComponent(service)}&metric=${encodeURIComponent(metric)}&minutes=${minutes}`);
       const series = await res.json();
 
-      const now = Date.now();
-      const windowStart = now - (minutes * 60 * 1000);
+      document.getElementById('chartTitle').textContent = `${metric} — ${service} (${windowText} • ${series.length} samples)`;
 
-      const dataPoints = series.map(pt => ({
-        x: new Date(pt.timestamp).getTime(),
-        y: pt.value
-      }));
+      if (!series || series.length === 0) {
+        renderEmptyChart(metric);
+        return;
+      }
 
-      renderChart(dataPoints, metric, windowStart, now, minutes);
+      // Format time labels based on the selected window
+      const labels = series.map(pt => {
+        let d = new Date(pt.timestamp);
+        if (isNaN(d.getTime())) {
+          const cleaned = pt.timestamp.replace(/(\.\d{3})\d+Z$/, '$1Z');
+          d = new Date(cleaned);
+        }
+        return formatDate(d, minutes);
+      });
+
+      const values = series.map(pt => pt.value);
+
+      renderChart(labels, values, metric);
     } catch (err) {
       console.error('Failed to fetch metric series', err);
     }
   }
 
-  function renderChart(dataPoints, metricName, minTime, maxTime, minutes) {
+  function formatDate(d, minutes) {
+    if (minutes > 360) {
+      // 24 Hours or longer: show Month Day, HH:MM
+      return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
+             d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    if (minutes > 15) {
+      // 1 Hour to 6 Hours: show HH:MM
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    // 15 Minutes or less: show HH:MM:SS
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  function renderChart(labels, values, metricName) {
     const canvas = document.getElementById('metricsCanvas');
     if (!canvas) return;
 
@@ -196,20 +220,9 @@ async function initDashboard() {
     gradient.addColorStop(0, 'rgba(56, 189, 248, 0.35)');
     gradient.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
 
-    function formatTick(val) {
-      const d = new Date(val);
-      if (minutes > 360) {
-        return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
-               d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      }
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: minutes <= 15 ? '2-digit' : undefined });
-    }
-
     if (metricsChart) {
-      metricsChart.options.scales.x.min = minTime;
-      metricsChart.options.scales.x.max = maxTime;
-      metricsChart.options.scales.x.ticks.callback = formatTick;
-      metricsChart.data.datasets[0].data = dataPoints;
+      metricsChart.data.labels = labels;
+      metricsChart.data.datasets[0].data = values;
       metricsChart.data.datasets[0].label = metricName;
       metricsChart.update();
       return;
@@ -218,9 +231,10 @@ async function initDashboard() {
     metricsChart = new Chart(ctx, {
       type: 'line',
       data: {
+        labels: labels,
         datasets: [{
           label: metricName,
-          data: dataPoints,
+          data: values,
           borderColor: '#38bdf8',
           borderWidth: 2.5,
           backgroundColor: gradient,
@@ -231,8 +245,7 @@ async function initDashboard() {
           pointBorderWidth: 2,
           pointRadius: 4,
           pointHoverRadius: 6,
-          pointHoverBackgroundColor: '#7dd3fc',
-          spanGaps: true
+          pointHoverBackgroundColor: '#7dd3fc'
         }]
       },
       options: {
@@ -249,28 +262,20 @@ async function initDashboard() {
             padding: 10,
             displayColors: false,
             callbacks: {
-              title: function(items) {
-                if (!items.length) return '';
-                const d = new Date(items[0].raw.x);
-                return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-              },
               label: function(item) {
-                return `${item.dataset.label}: ${item.raw.y.toFixed(2)}`;
+                const val = typeof item.raw === 'number' ? item.raw.toFixed(2) : item.raw;
+                return `${item.dataset.label}: ${val}`;
               }
             }
           }
         },
         scales: {
           x: {
-            type: 'linear',
-            min: minTime,
-            max: maxTime,
             grid: { color: 'rgba(33, 46, 74, 0.5)' },
             ticks: {
               color: '#94a3b8',
               font: { size: 11 },
-              maxTicksLimit: 8,
-              callback: formatTick
+              maxTicksLimit: 10
             }
           },
           y: {
@@ -281,6 +286,15 @@ async function initDashboard() {
         }
       }
     });
+  }
+
+  function renderEmptyChart(metricName) {
+    if (metricsChart) {
+      metricsChart.data.labels = ['No Data'];
+      metricsChart.data.datasets[0].data = [0];
+      metricsChart.data.datasets[0].label = metricName;
+      metricsChart.update();
+    }
   }
 
   // Event Listeners
