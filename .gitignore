@@ -1,0 +1,9 @@
+bin/
+obj/
+*.db
+*.db-wal
+*.db-shm
+.vscode/
+.idea/
+*.user
+

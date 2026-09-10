@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metrics Explorer — KestrelScope</title>
+  <link rel="stylesheet" href="/css/main.css">
+  <script src="/js/chart.min.js"></script>
+</head>
+<body>
+  <header class="navbar">
+    <a href="/dashboard.html" class="nav-brand">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+      </svg>
+      <span>KestrelScope</span>
+    </a>
+
+    <nav class="nav-links">
+      <a href="/dashboard.html" class="nav-link active">Metrics</a>
+      <a href="/traces.html" class="nav-link">Traces</a>
+      <a href="/alerts.html" class="nav-link">Alert Rules</a>
+    </nav>
+
+    <div class="nav-user">
+      <div id="userAvatar" class="user-avatar">AD</div>
+      <button class="btn-logout" onclick="handleLogout()">Sign Out</button>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <!-- KPI Stat Cards -->
+    <div class="kpi-grid">
+      <div class="kpi-card kpi-cyan">
+        <div class="kpi-title">Monitored Services:</div>
+        <div id="statServices" class="kpi-value">0</div>
+      </div>
+
+      <div class="kpi-card kpi-blue">
+        <div class="kpi-title">Ingested Samples:</div>
+        <div id="statSamples" class="kpi-value">0</div>
+      </div>
+
+      <div class="kpi-card kpi-purple">
+        <div class="kpi-title">Active Alerts:</div>
+        <div id="statAlerts" class="kpi-value">0</div>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <div class="filter-group">
+        <label class="filter-label">Service</label>
+        <select id="serviceSelect" class="filter-select">
+          <option value="">Loading services...</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Metric</label>
+        <select id="metricSelect" class="filter-select">
+          <option value="">Loading metrics...</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Time Window</label>
+        <select id="windowSelect" class="filter-select">
+          <option value="15">Last 15 Minutes</option>
+          <option value="60" selected>Last 1 Hour</option>
+          <option value="360">Last 6 Hours</option>
+          <option value="1440">Last 24 Hours</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Chart Panel -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <h2 id="chartTitle" class="chart-title">Metric Performance</h2>
+      </div>
+      <div class="chart-wrapper">
+        <canvas id="metricsCanvas"></canvas>
+      </div>
+    </div>
+  </main>
+
+  <script src="/js/app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', initDashboard);
+  </script>
+</body>
+</html>
+

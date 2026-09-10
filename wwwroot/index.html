@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KestrelScope — Sovereign Observability Monolith</title>
+    <link rel="stylesheet" href="/css/main.css">
+    <style>
+        body {
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .landing-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 3rem;
+            max-width: 640px;
+            width: 100%;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+            text-align: center;
+        }
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.4rem 0.9rem;
+            border-radius: 9999px;
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            color: var(--color-green);
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--color-green);
+            box-shadow: 0 0 8px var(--color-green);
+        }
+        .landing-nav {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+        .landing-btn {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            text-decoration: none;
+            padding: 1rem;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .landing-btn:hover {
+            border-color: var(--color-cyan);
+            color: var(--color-cyan);
+            transform: translateY(-2px);
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="landing-card">
+        <div class="status-badge">
+            <span class="status-dot"></span>
+            Platform Operational — 100% Sovereign Monolith
+        </div>
+        
+        <h1 style="font-size:2.2rem; font-weight:700; color:#fff; margin-bottom:0.75rem;">KestrelScope</h1>
+        <p style="color:var(--text-secondary); line-height:1.6;">
+            Self-hosted .NET 9 OpenTelemetry observability monolith with embedded SQLite WAL storage and zero external SaaS dependencies.
+        </p>
+
+        <div class="landing-nav">
+            <a href="/dashboard.html" class="landing-btn">
+                <span>📊</span>
+                <span>Metrics</span>
+            </a>
+            <a href="/traces.html" class="landing-btn">
+                <span>🔍</span>
+                <span>Traces</span>
+            </a>
+            <a href="/alerts.html" class="landing-btn">
+                <span>🚨</span>
+                <span>Alert Rules</span>
+            </a>
+        </div>
+    </div>
+</body>
+</html>

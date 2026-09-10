@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Traces Explorer — KestrelScope</title>
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+  <header class="navbar">
+    <a href="/dashboard.html" class="nav-brand">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+      </svg>
+      <span>KestrelScope</span>
+    </a>
+
+    <nav class="nav-links">
+      <a href="/dashboard.html" class="nav-link">Metrics</a>
+      <a href="/traces.html" class="nav-link active">Traces</a>
+      <a href="/alerts.html" class="nav-link">Alert Rules</a>
+    </nav>
+
+    <div class="nav-user">
+      <div id="userAvatar" class="user-avatar">AD</div>
+      <button class="btn-logout" onclick="handleLogout()">Sign Out</button>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <div class="traces-split-container">
+      <!-- Left Panel: Trace List -->
+      <section class="trace-panel">
+        <div class="panel-header">
+          <h2 class="panel-title">Trace List</h2>
+        </div>
+
+        <div class="search-box">
+          <input type="text" id="traceSearch" class="filter-input" style="width:100%" placeholder="Search by trace ID, endpoint, or service...">
+        </div>
+
+        <div class="trace-table-wrapper">
+          <table class="trace-table">
+            <thead>
+              <tr>
+                <th>Trace ID</th>
+                <th>Method</th>
+                <th>Endpoint</th>
+                <th>Status</th>
+                <th>Duration</th>
+              </tr>
+            </thead>
+            <tbody id="traceTableBody">
+              <tr>
+                <td colspan="5" style="text-align:center; color:#64748b; padding:2rem;">
+                  Loading traces...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Right Panel: Trace Timeline Waterfall -->
+      <section class="trace-panel">
+        <div class="panel-header">
+          <h2 id="timelineTitle" class="panel-title">Trace Timeline</h2>
+        </div>
+
+        <div class="timeline-ruler">
+          <span>0ms</span>
+          <span>50ms</span>
+          <span>100ms</span>
+          <span>200ms</span>
+          <span>350ms</span>
+          <span>500ms+</span>
+        </div>
+
+        <div id="timelineSpans" class="timeline-spans">
+          <div style="color:#64748b; padding:1.5rem; text-align:center;">
+            Select a trace from the left panel to inspect its execution hierarchy.
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="/js/app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', initTraces);
+  </script>
+</body>
+</html>
+

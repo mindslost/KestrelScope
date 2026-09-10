@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alert Rules — KestrelScope</title>
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+  <header class="navbar">
+    <a href="/dashboard.html" class="nav-brand">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+      </svg>
+      <span>KestrelScope</span>
+    </a>
+
+    <nav class="nav-links">
+      <a href="/dashboard.html" class="nav-link">Metrics</a>
+      <a href="/traces.html" class="nav-link">Traces</a>
+      <a href="/alerts.html" class="nav-link active">Alert Rules</a>
+    </nav>
+
+    <div class="nav-user">
+      <div id="userAvatar" class="user-avatar">AD</div>
+      <button class="btn-logout" onclick="handleLogout()">Sign Out</button>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <div class="alert-header">
+      <h2 class="panel-title" style="font-size:1.5rem;">Alert Rules</h2>
+      <button id="btnNewAlert" class="btn-primary">+ New Alert</button>
+    </div>
+
+    <!-- Alert Cards Grid -->
+    <div id="alertGrid" class="alert-grid">
+      <div style="color:#64748b; padding:2rem;">Loading alert rules...</div>
+    </div>
+  </main>
+
+  <!-- Modal: Assign New Metric Alert -->
+  <div id="alertModal" class="modal-overlay">
+    <div class="modal-content">
+      <h3 class="modal-title">Assign New Metric Alert</h3>
+      <form id="alertForm" class="modal-form">
+        <div>
+          <label class="filter-label">Rule Name</label>
+          <input type="text" id="ruleName" class="filter-input" style="width:100%; margin-top:0.3rem;" placeholder="e.g. High Request Duration Alert" required>
+        </div>
+
+        <div>
+          <label class="filter-label">Metric Name</label>
+          <input type="text" id="metricName" class="filter-input" style="width:100%; margin-top:0.3rem;" placeholder="e.g. http.server.duration" required>
+        </div>
+
+        <div>
+          <label class="filter-label">Threshold Condition (Breach if Avg &gt; Threshold)</label>
+          <input type="number" step="any" id="threshold" class="filter-input" style="width:100%; margin-top:0.3rem;" placeholder="e.g. 500" required>
+        </div>
+
+        <div>
+          <label class="filter-label">Evaluation Window (Minutes)</label>
+          <select id="windowMinutes" class="filter-select" style="width:100%; margin-top:0.3rem;">
+            <option value="1">1 Minute</option>
+            <option value="5" selected>5 Minutes</option>
+            <option value="15">15 Minutes</option>
+            <option value="60">60 Minutes</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="filter-label">Notification Webhook URL</label>
+          <input type="url" id="webhookUrl" class="filter-input" style="width:100%; margin-top:0.3rem;" placeholder="http://internal-webhook/alert" required>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" id="btnCancelModal" class="btn-secondary">Cancel</button>
+          <button type="submit" class="btn-primary">Create Alert</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', initAlerts);
+  </script>
+</body>
+</html>
+
