@@ -199,15 +199,12 @@ async function initDashboard() {
 
   function formatDate(d, minutes) {
     if (minutes > 360) {
-      // 24 Hours or longer: show Month Day, HH:MM
       return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
              d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
     if (minutes > 15) {
-      // 1 Hour to 6 Hours: show HH:MM
       return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
-    // 15 Minutes or less: show HH:MM:SS
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
 
@@ -290,7 +287,7 @@ async function initDashboard() {
 
   function renderEmptyChart(metricName) {
     if (metricsChart) {
-      metricsChart.data.labels = ['No Data'];
+      metricsChart.data.labels = ['No Data in Selected Window'];
       metricsChart.data.datasets[0].data = [0];
       metricsChart.data.datasets[0].label = metricName;
       metricsChart.update();
