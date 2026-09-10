@@ -1,0 +1,214 @@
+Implementation Guide: KestrelScope Single-Binary Monolith Architecture
+
+1. KestrelScope Monolithic Architecture Overview
+
+The KestrelScope "Option 1" architecture is a self-contained observability monolith designed for high-performance telemetry processing within a single ASP.NET Core process. By consolidating ingestion, storage, and visualization, KestrelScope eliminates the operational overhead and "observability deadlock" risks associated with managing distributed collector-database-UI clusters.
+
+This monolithic model prioritizes a minimal resource footprint by utilizing the shared ASP.NET Core runtime and eliminating the CPU-intensive cross-process serialization (gRPC/HTTP) typically required between OTel components.
+
+Architectural Comparison
+
+Dimension	Traditional Multi-Component OTel Stacks	KestrelScope Monolith (Option 1)
+Deployment Complexity	High (Requires Collector, DB, UI, and Sidecars)	Low (Single binary or container)
+Communication	Network (Heavy serialization overhead)	In-Process (Direct memory/method calls)
+Resource Footprint	Significant (Multiple runtimes and buffers)	Minimal (Shared runtime, no network IO)
+Coordination	External (ZooKeeper, Keeper, or Operators)	None (Self-contained)
+
+2. OTLP Ingestion Engine and Protocol Receivers
+
+The KestrelScope ingestion engine implements standard OTLP/HTTP protocol receivers. To maintain low-overhead operations, the engine prioritizes Protobuf serialization over JSON to reduce CPU cycles during deserialization.
+
+Endpoint Requirements
+
+* POST /v1/traces: Ingests Protobuf-encoded span data.
+* POST /v1/metrics: Ingests metric samples and time-series data.
+
+Payload Handling and "Observability Deadlock" Prevention
+
+To ensure that the monitoring system never blocks the target application, KestrelScope implements a non-blocking ingestion pipeline. Once a payload is received, it is immediately handed off to an internal thread-safe buffer (e.g., System.Threading.Channels). The receiver returns an immediate HTTP 202 (Accepted) acknowledgment. This decoupling protects the client application from storage I/O bottlenecks and network latency.
+
+ASP.NET Core Route Configuration
+
+The following implementation demonstrates the handoff to an internal queue to ensure immediate ACK:
+
+// Internal handoff to prevent ingestion blocking
+app.MapPost("/v1/traces", async (HttpContext context, Channel<TracePayload> traceChannel) => {
+    using var ms = new MemoryStream();
+    await context.Request.Body.CopyToAsync(ms);
+    
+    // Immediate handoff to internal thread-safe buffer
+    var success = traceChannel.Writer.TryWrite(new TracePayload(ms.ToArray()));
+    
+    // Return ACK immediately to protect monitored app
+    return success ? Results.Accepted() : Results.StatusCode(503);
+});
+
+app.MapPost("/v1/metrics", async (HttpContext context, Channel<MetricPayload> metricChannel) => {
+    using var ms = new MemoryStream();
+    await context.Request.Body.CopyToAsync(ms);
+    
+    var success = metricChannel.Writer.TryWrite(new MetricPayload(ms.ToArray()));
+    return success ? Results.Accepted() : Results.StatusCode(503);
+});
+
+
+3. Storage Layer: Embedded SQLite in WAL Mode
+
+For monolithic deployment, KestrelScope utilizes an embedded SQLite engine. While the platform is designed for ClickHouse in clustered environments, the monolith uses SQLite with specific optimizations to emulate columnar efficiency.
+
+Write-Ahead Logging (WAL) and Concurrency
+
+To support high-throughput writes from ingestion while simultaneously serving dashboard queries, SQLite is configured in Write-Ahead Logging (WAL) mode. This allows readers and writers to operate concurrently without locking the database file, preventing ingestion stalls during complex analytical reads.
+
+Optimized Table Schemas
+
+The schema includes critical OTLP attributes required for reconstructing logical parent-child execution spans and generating flame graphs.
+
+Traces Table
+
+* TraceId (TEXT): Unique transaction identifier.
+* SpanId (TEXT): Unique operation identifier.
+* ParentSpanId (TEXT): Identifier for the logical parent.
+* StatusCode (TEXT): OTLP status (e.g., 'Error', 'Ok').
+* Timestamp (DATETIME): Event start time (indexed).
+* ServiceName (TEXT): Source application name (indexed).
+* Duration (INTEGER): Execution time in nanoseconds.
+* Attributes (JSON): Metadata and resource labels.
+
+Performance Indexing: To prevent the query degradation typically seen in growing telemetry sets, mandatory indexes are applied to ServiceName and Timestamp.
+
+4. In-Process Background Alerting Worker
+
+The "Ruler Engine" is implemented as a BackgroundService that evaluates service health by querying the local SQLite store.
+
+Alert Evaluation Loop
+
+The worker periodically executes analytical queries to detect service degradation. Unlike simple count-based alerts, KestrelScope evaluates error rates using the exact OTLP attribute mappings.
+
+Execution Cycle
+
+1. Scheduled Execution: The worker triggers every 60 seconds.
+2. Health Query: The engine executes the following logic (expressed in SQL):
+
+SELECT 
+    ServiceName,
+    (countIf(StatusCode = 'Error') / count()) * 100 AS error_rate
+FROM Traces
+WHERE Timestamp >= datetime('now', '-5 minutes')
+GROUP BY ServiceName
+HAVING error_rate > 5.0
+
+
+1. State Management: The engine tracks if the alert is already "Firing" to avoid notification fatigue.
+2. Dispatch: Notifications are sent via configured Webhooks or Email.
+
+5. Local Static Web Dashboard and REST API Contracts
+
+The visualization layer is a static Single Page Application (SPA) hosted within the wwwroot folder, served directly by the KestrelScope process via static file middleware.
+
+REST API Contracts
+
+The dashboard interacts with the backend through asynchronous, non-blocking API contracts:
+
+* GET /api/traces: Returns transaction breakdowns and hierarchical span data for flame graph reconstruction using ParentSpanId.
+* GET /api/metrics: Returns aggregated time-series samples for health heatmaps.
+
+All backend controllers must utilize async/await patterns to ensure the ingestion thread pool remains unblocked during heavy analytical processing.
+
+6. Zero-Code Instrumentation and Environment Configuration
+
+KestrelScope leverages DOTNET_STARTUP_HOOKS to inject the observability agent into .NET processes at runtime without source code modifications.
+
+The ApmAgent Startup Hook
+
+The following C# code must be compiled into the agent DLL (KestrelScope.Agent.dll). It suppresses initialization errors to ensure the monitoring layer never crashes the host application.
+
+using System;
+using OpenTelemetry;
+using OpenTelemetry.Trace;
+using OpenTelemetry.Metrics;
+
+namespace KestrelScope.Agent
+{
+    public class StartupHook
+    {
+        private static TracerProvider? _tracerProvider;
+        private static MeterProvider? _meterProvider;
+
+        public static void Initialize()
+        {
+            try
+            {
+                var endpoint = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT") 
+                               ?? "http://localhost:4318";
+
+                _tracerProvider = Sdk.CreateTracerProviderBuilder()
+                    .AddAspNetCoreInstrumentation()
+                    .AddHttpClientInstrumentation()
+                    .AddOtlpExporter(opt => { opt.Endpoint = new Uri(endpoint); })
+                    .Build();
+
+                _meterProvider = Sdk.CreateMeterProviderBuilder()
+                    .AddAspNetCoreInstrumentation()
+                    .AddOtlpExporter(opt => { opt.Endpoint = new Uri(endpoint); })
+                    .Build();
+            }
+            catch (Exception)
+            {
+                // Silently suppress to prevent host application boot crash
+            }
+        }
+    }
+}
+
+
+Environment Configuration
+
+The target application requires the following environment variables.
+
+Linux / Container Configuration:
+
+* DOTNET_STARTUP_HOOKS: /opt/kestrelscope/KestrelScope.Agent.dll
+* OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
+* OTEL_SERVICE_NAME: order-processor
+
+Windows Service / IIS Configuration: For Windows Services, variables must be defined in the Registry under HKLM\SYSTEM\CurrentControlSet\Services\$svcName in a REG_MULTI_SZ value named Environment.
+
+* CORECLR_ENABLE_PROFILING=1
+* DOTNET_STARTUP_HOOKS=C:\KestrelScope\KestrelScope.Agent.dll
+
+7. Deployment and Operational Steps
+
+KestrelScope is deployed as a standalone binary. External coordination tools like ZooKeeper are strictly forbidden in this monolithic configuration.
+
+Docker Compose Configuration
+
+version: '3.8'
+services:
+  kestrelscope:
+    image: kestrelscope-monolith:latest
+    container_name: kestrelscope
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+      - "8080:80"   # Dashboard
+    volumes:
+      - kestrelscope_storage:/app/data
+    environment:
+      - SQLITE_DB_PATH=/app/data/kestrelscope.db
+      - ASPNETCORE_ENVIRONMENT=Production
+
+volumes:
+  kestrelscope_storage:
+
+
+8. Troubleshooting and Health Verification
+
+Before scaling, perform these health checks to ensure the pipeline is operational:
+
+* [ ] OTLP Connectivity: Verify the monolith is listening on port 4318. Use curl -I http://localhost:4318/v1/traces to check for endpoint availability.
+* [ ] SQLite Permissions: Ensure the process has write access to the database directory. SQLite requires directory-level write permissions to create -wal and -shm files.
+* [ ] Startup Hook Loading: Check the target application logs. If the agent fails to load, verify the DOTNET_STARTUP_HOOKS path is absolute and reachable.
+* [ ] Protobuf Validation: Monitor KestrelScope console output for deserialization errors. Ensure the agent and monolith are using compatible OTLP Protobuf versions.
+* [ ] Dashboard Assets: Confirm the wwwroot directory is located in the binary's execution path to avoid 404 errors on the UI.
+
