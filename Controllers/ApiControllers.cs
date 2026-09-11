@@ -51,6 +51,19 @@ public class TraceSpanDto
     public string Timestamp { get; set; } = "";
 }
 
+public class LogRecordDto
+{
+    public long Id { get; set; }
+    public string Timestamp { get; set; } = "";
+    public string? TraceId { get; set; }
+    public string? SpanId { get; set; }
+    public string ServiceName { get; set; } = "";
+    public string SeverityText { get; set; } = "";
+    public int SeverityNumber { get; set; }
+    public string Body { get; set; } = "";
+    public string? AttributesJson { get; set; }
+}
+
 // ============================================================================
 // Auth Controller (/api/auth)
 // ============================================================================
@@ -370,6 +383,73 @@ public class TracesController : ControllerBase
         );
 
         return Ok(spans);
+    }
+}
+
+// ============================================================================
+// Logs Controller (/api/logs)
+// ============================================================================
+[ApiController]
+[Route("api/logs")]
+public class LogsController : ControllerBase
+{
+    private readonly string _dbConn;
+
+    public LogsController(IConfiguration config)
+    {
+        _dbConn = config.GetConnectionString("DefaultConnection") ?? "Data Source=observability.db;";
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetLogs(
+        [FromQuery] string? service,
+        [FromQuery] string? severity,
+        [FromQuery] string? traceId,
+        [FromQuery] string? query,
+        [FromQuery] int minutes = 60,
+        [FromQuery] int limit = 100)
+    {
+        if (minutes <= 0) minutes = 60;
+        if (limit <= 0 || limit > 500) limit = 100;
+        var windowStart = DateTime.UtcNow.AddMinutes(-minutes).ToString("o");
+
+        using var conn = new SqliteConnection(_dbConn);
+
+        string sql = @"
+            SELECT Id, Timestamp, TraceId, SpanId, ServiceName, SeverityText, SeverityNumber, Body, AttributesJson
+            FROM Logs
+            WHERE Timestamp >= @windowStart
+              AND (@service IS NULL OR @service = '' OR ServiceName = @service)
+              AND (@severity IS NULL OR @severity = '' OR SeverityText = @severity)
+              AND (@traceId IS NULL OR @traceId = '' OR TraceId = @traceId)
+              AND (@query IS NULL OR @query = '' OR Body LIKE @likeQuery)
+            ORDER BY Timestamp DESC
+            LIMIT @limit;";
+
+        string? likeQuery = string.IsNullOrWhiteSpace(query) ? null : $"%{query.Trim()}%";
+
+        var logs = await conn.QueryAsync<LogRecordDto>(sql, new
+        {
+            windowStart,
+            service = string.IsNullOrWhiteSpace(service) ? null : service.Trim(),
+            severity = string.IsNullOrWhiteSpace(severity) ? null : severity.Trim().ToUpperInvariant(),
+            traceId = string.IsNullOrWhiteSpace(traceId) ? null : traceId.Trim(),
+            query = string.IsNullOrWhiteSpace(query) ? null : query.Trim(),
+            likeQuery,
+            limit
+        });
+
+        return Ok(logs);
+    }
+
+    [HttpGet("services")]
+    public async Task<IActionResult> GetLogServices()
+    {
+        using var conn = new SqliteConnection(_dbConn);
+        var services = await conn.QueryAsync<string>(
+            "SELECT DISTINCT ServiceName FROM Logs ORDER BY ServiceName ASC;"
+        );
+        return Ok(services);
     }
 }
 

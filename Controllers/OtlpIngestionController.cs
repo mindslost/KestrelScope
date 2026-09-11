@@ -197,6 +197,105 @@ public class OtlpIngestionController : ControllerBase
         return Ok(new { status = "success", ingested = spanCount });
     }
 
+    [HttpPost("logs")]
+    public async Task<IActionResult> IngestLogs([FromBody] JsonElement payload)
+    {
+        if (!payload.TryGetProperty("resourceLogs", out var resourceLogs) || 
+            resourceLogs.ValueKind != JsonValueKind.Array)
+        {
+            return BadRequest(new { error = "Invalid OTLP payload: missing or invalid resourceLogs" });
+        }
+
+        int logCount = 0;
+
+        using var connection = new SqliteConnection(_dbConn);
+        await connection.OpenAsync();
+        using var transaction = connection.BeginTransaction();
+
+        using var cmd = connection.CreateCommand();
+        cmd.Transaction = transaction;
+        cmd.CommandText = @"
+            INSERT INTO Logs (Timestamp, TraceId, SpanId, ServiceName, SeverityText, SeverityNumber, Body, AttributesJson)
+            VALUES (@time, @traceId, @spanId, @service, @sevText, @sevNum, @body, @attrs);";
+
+        var pTime = cmd.Parameters.Add("@time", SqliteType.Text);
+        var pTraceId = cmd.Parameters.Add("@traceId", SqliteType.Text);
+        var pSpanId = cmd.Parameters.Add("@spanId", SqliteType.Text);
+        var pService = cmd.Parameters.Add("@service", SqliteType.Text);
+        var pSevText = cmd.Parameters.Add("@sevText", SqliteType.Text);
+        var pSevNum = cmd.Parameters.Add("@sevNum", SqliteType.Integer);
+        var pBody = cmd.Parameters.Add("@body", SqliteType.Text);
+        var pAttrs = cmd.Parameters.Add("@attrs", SqliteType.Text);
+
+        foreach (var rl in resourceLogs.EnumerateArray())
+        {
+            string serviceName = ExtractServiceName(rl);
+
+            if (!rl.TryGetProperty("scopeLogs", out var scopeLogs) || scopeLogs.ValueKind != JsonValueKind.Array)
+                continue;
+
+            foreach (var sl in scopeLogs.EnumerateArray())
+            {
+                if (!sl.TryGetProperty("logRecords", out var logRecords) || logRecords.ValueKind != JsonValueKind.Array)
+                    continue;
+
+                foreach (var log in logRecords.EnumerateArray())
+                {
+                    ulong timeNano = ParseNano(log, "timeUnixNano");
+                    if (timeNano == 0) timeNano = ParseNano(log, "observedTimeUnixNano");
+                    DateTime timestamp = timeNano > 0
+                        ? DateTimeOffset.FromUnixTimeMilliseconds((long)(timeNano / 1_000_000)).UtcDateTime
+                        : DateTime.UtcNow;
+
+                    string? traceId = log.TryGetProperty("traceId", out var tId) ? tId.GetString() : null;
+                    string? spanId = log.TryGetProperty("spanId", out var sId) ? sId.GetString() : null;
+
+                    string sevText = log.TryGetProperty("severityText", out var st) ? (st.GetString() ?? "INFO") : "INFO";
+                    int sevNum = log.TryGetProperty("severityNumber", out var sn) && sn.TryGetInt32(out int sVal) ? sVal : 9;
+
+                    string body = "";
+                    if (log.TryGetProperty("body", out var bProp))
+                    {
+                        if (bProp.ValueKind == JsonValueKind.String)
+                        {
+                            body = bProp.GetString() ?? "";
+                        }
+                        else if (bProp.ValueKind == JsonValueKind.Object && bProp.TryGetProperty("stringValue", out var strVal))
+                        {
+                            body = strVal.GetString() ?? "";
+                        }
+                        else
+                        {
+                            body = bProp.GetRawText();
+                        }
+                    }
+
+                    string attrsJson = "{}";
+                    if (log.TryGetProperty("attributes", out var attrs))
+                    {
+                        attrsJson = attrs.GetRawText();
+                    }
+
+                    pTime.Value = timestamp.ToString("o");
+                    pTraceId.Value = string.IsNullOrEmpty(traceId) ? DBNull.Value : traceId;
+                    pSpanId.Value = string.IsNullOrEmpty(spanId) ? DBNull.Value : spanId;
+                    pService.Value = serviceName;
+                    pSevText.Value = sevText.ToUpperInvariant();
+                    pSevNum.Value = sevNum;
+                    pBody.Value = body;
+                    pAttrs.Value = attrsJson;
+
+                    await cmd.ExecuteNonQueryAsync();
+                    logCount++;
+                }
+            }
+        }
+
+        await transaction.CommitAsync();
+        _logger.LogInformation("Ingested {Count} log records.", logCount);
+        return Ok(new { status = "success", ingested = logCount });
+    }
+
     private static string ExtractServiceName(JsonElement root)
     {
         if (root.TryGetProperty("resource", out var res) &&

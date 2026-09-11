@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Logs Explorer — KestrelScope</title>
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+  <header class="navbar">
+    <a href="/dashboard.html" class="nav-brand">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+      </svg>
+      <span>KestrelScope</span>
+    </a>
+
+    <nav class="nav-links">
+      <a href="/dashboard.html" class="nav-link">Metrics</a>
+      <a href="/traces.html" class="nav-link">Traces</a>
+      <a href="/logs.html" class="nav-link active">Logs</a>
+      <a href="/alerts.html" class="nav-link">Alert Rules</a>
+    </nav>
+
+    <div class="nav-user">
+      <div id="userAvatar" class="user-avatar">AD</div>
+      <button class="btn-logout" onclick="handleLogout()">Sign Out</button>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <div class="page-header" style="margin-bottom: 1.5rem;">
+      <div>
+        <h1 class="page-title">Logs Explorer</h1>
+        <p class="page-subtitle">Real-time structured log telemetry with OpenTelemetry trace correlation</p>
+      </div>
+
+      <div class="time-selector">
+        <button class="time-btn" data-minutes="15" onclick="setLogTimeWindow(15)">15m</button>
+        <button class="time-btn active" data-minutes="60" onclick="setLogTimeWindow(60)">1h</button>
+        <button class="time-btn" data-minutes="360" onclick="setLogTimeWindow(360)">6h</button>
+        <button class="time-btn" data-minutes="1440" onclick="setLogTimeWindow(1440)">24h</button>
+      </div>
+    </div>
+
+    <!-- Filter Control Bar -->
+    <div class="filter-bar" style="display:flex; flex-wrap:wrap; gap:1rem; align-items:center; margin-bottom:1.5rem; background:var(--bg-surface); padding:1rem 1.25rem; border:1px solid var(--border-color); border-radius:12px;">
+      <div style="display:flex; flex-direction:column; gap:0.35rem; min-width:180px;">
+        <label style="font-size:0.75rem; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Service</label>
+        <select id="logServiceSelect" class="filter-select" onchange="loadLogs()">
+          <option value="">All Services</option>
+        </select>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:0.35rem; min-width:140px;">
+        <label style="font-size:0.75rem; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Severity</label>
+        <select id="logSeveritySelect" class="filter-select" onchange="loadLogs()">
+          <option value="">All Severities</option>
+          <option value="ERROR">ERROR</option>
+          <option value="WARN">WARN</option>
+          <option value="INFO">INFO</option>
+          <option value="DEBUG">DEBUG</option>
+        </select>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:0.35rem; flex:1; min-width:220px;">
+        <label style="font-size:0.75rem; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Search Message</label>
+        <input type="text" id="logSearchInput" class="filter-input" placeholder="Search log body..." oninput="debounceLogSearch()">
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:0.35rem; min-width:200px;">
+        <label style="font-size:0.75rem; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Trace ID</label>
+        <input type="text" id="logTraceInput" class="filter-input" placeholder="Filter by Trace ID..." oninput="debounceLogSearch()">
+      </div>
+
+      <div style="display:flex; align-items:flex-end; padding-top:1.2rem;">
+        <button class="btn-primary" style="padding:0.6rem 1.2rem;" onclick="loadLogs()">
+          <svg style="width:14px; height:14px; fill:currentColor; margin-right:6px;" viewBox="0 0 24 24">
+            <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+          </svg>
+          Refresh
+        </button>
+      </div>
+    </div>
+
+    <!-- Log Stat Metrics -->
+    <div class="metrics-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 1.5rem;">
+      <div class="metric-card">
+        <span class="metric-title">Total Logs</span>
+        <span id="statTotalLogs" class="metric-value">0</span>
+        <span class="metric-subtitle">In current window</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-title" style="color:var(--color-red);">Error Events</span>
+        <span id="statErrorLogs" class="metric-value" style="color:var(--color-red);">0</span>
+        <span class="metric-subtitle">Critical / Error</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-title" style="color:var(--color-amber);">Warning Events</span>
+        <span id="statWarnLogs" class="metric-value" style="color:var(--color-amber);">0</span>
+        <span class="metric-subtitle">Degraded state</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-title" style="color:var(--color-cyan);">Informational</span>
+        <span id="statInfoLogs" class="metric-value" style="color:var(--color-cyan);">0</span>
+        <span class="metric-subtitle">Operational events</span>
+      </div>
+    </div>
+
+    <!-- Logs Table -->
+    <div class="chart-card" style="padding: 1.25rem;">
+      <div class="trace-table-wrapper" style="max-height: 600px; overflow-y: auto;">
+        <table class="trace-table">
+          <thead>
+            <tr>
+              <th style="width: 140px;">Timestamp</th>
+              <th style="width: 90px;">Severity</th>
+              <th style="width: 150px;">Service</th>
+              <th>Log Message</th>
+              <th style="width: 180px;">Trace Correlation</th>
+            </tr>
+          </thead>
+          <tbody id="logsTableBody">
+            <tr>
+              <td colspan="5" style="text-align:center; color:#64748b; padding:2rem;">
+                Loading structured logs...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script src="/js/app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', initLogs);
+  </script>
+</body>
+</html>
+

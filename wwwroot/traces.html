@@ -18,6 +18,7 @@
     <nav class="nav-links">
       <a href="/dashboard.html" class="nav-link">Metrics</a>
       <a href="/traces.html" class="nav-link active">Traces</a>
+      <a href="/logs.html" class="nav-link">Logs</a>
       <a href="/alerts.html" class="nav-link">Alert Rules</a>
     </nav>
 
@@ -63,8 +64,9 @@
 
       <!-- Right Panel: Trace Timeline Waterfall -->
       <section class="trace-panel">
-        <div class="panel-header">
+        <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center;">
           <h2 id="timelineTitle" class="panel-title">Trace Timeline</h2>
+          <div id="traceActions" style="display:flex; gap:0.5rem;"></div>
         </div>
 
         <div class="timeline-ruler">

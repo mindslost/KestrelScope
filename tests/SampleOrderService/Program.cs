@@ -62,11 +62,17 @@ app.MapPost("/api/orders", async (OrderRequest req) =>
     long endNano = dbEnd + 5_000_000;
     dispatcher.RecordSpan(traceId, rootSpanId, null, "POST /api/orders", startNano, endNano, 1);
 
+    var orderId = "ORD-" + Guid.NewGuid().ToString("N")[..8].ToUpper();
+
+    // Correlated Structured Logs
+    dispatcher.RecordLog(traceId, invSpanId, "INFO", 9, $"Validating stock for customer {req.CustomerId}");
+    dispatcher.RecordLog(traceId, paySpanId, "INFO", 9, $"Payment card authorization approved for ${req.TotalAmount:F2}");
+    dispatcher.RecordLog(traceId, dbSpanId, "INFO", 9, $"Order {orderId} successfully persisted to database");
+
     // Record Duration Metric
     dispatcher.RecordMetric("http.server.request.duration", sw.Elapsed.TotalMilliseconds);
     dispatcher.RecordMetric("orders.created.count", 1.0);
 
-    var orderId = "ORD-" + Guid.NewGuid().ToString("N")[..8].ToUpper();
     return Results.Created($"/api/orders/{orderId}", new
     {
         orderId,
@@ -129,6 +135,10 @@ app.MapPost("/api/orders/fail", async () =>
     dispatcher.RecordMetric("http.server.request.duration", 550.0);
     dispatcher.RecordMetric("orders.failed.count", 1.0);
 
+    // Correlated Warning and Error Logs
+    dispatcher.RecordLog(traceId, paySpanId, "WARN", 13, "Payment processing latency exceeding 100ms threshold");
+    dispatcher.RecordLog(traceId, rootSpanId, "ERROR", 17, "Payment declined: Card issuer rejected transaction. Order aborted.");
+
     return Results.Problem(
         detail: "Payment declined: Card issuer rejected transaction.",
         statusCode: StatusCodes.Status500InternalServerError,
@@ -156,9 +166,11 @@ public class TelemetryDispatcher : BackgroundService
     private readonly HttpClient _http = new();
     private readonly ConcurrentQueue<SpanRecord> _spans = new();
     private readonly ConcurrentQueue<MetricRecord> _metrics = new();
+    private readonly ConcurrentQueue<LogMessageRecord> _logs = new();
 
     public record SpanRecord(string TraceId, string SpanId, string? ParentSpanId, string Name, long StartNano, long EndNano, int StatusCode);
     public record MetricRecord(string MetricName, double Value, long TimeNano);
+    public record LogMessageRecord(string? TraceId, string? SpanId, string SeverityText, int SeverityNumber, string Body, long TimeNano, Dictionary<string, string>? Attributes);
 
     public TelemetryDispatcher(string serviceName, string otlpBaseUrl)
     {
@@ -175,6 +187,12 @@ public class TelemetryDispatcher : BackgroundService
     {
         long nowNano = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000;
         _metrics.Enqueue(new MetricRecord(metricName, value, nowNano));
+    }
+
+    public void RecordLog(string? traceId, string? spanId, string severityText, int severityNumber, string body, Dictionary<string, string>? attributes = null)
+    {
+        long nowNano = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000;
+        _logs.Enqueue(new LogMessageRecord(traceId, spanId, severityText, severityNumber, body, nowNano, attributes));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -296,6 +314,60 @@ public class TelemetryDispatcher : BackgroundService
             string json = JsonSerializer.Serialize(metricPayload);
             var res = await _http.PostAsync($"{_otlpBaseUrl}/v1/metrics", new StringContent(json, Encoding.UTF8, "application/json"), ct);
             Console.WriteLine($"[TelemetryDispatcher] Emitted {pendingMetrics.Count} metric samples to {_otlpBaseUrl}/v1/metrics -> {res.StatusCode}");
+        }
+
+        // 3. Flush Logs
+        var pendingLogs = new List<LogMessageRecord>();
+        while (_logs.TryDequeue(out var l)) pendingLogs.Add(l);
+
+        if (pendingLogs.Count > 0)
+        {
+            var logRecords = pendingLogs.Select(l =>
+            {
+                var attrs = l.Attributes != null && l.Attributes.Count > 0
+                    ? l.Attributes.Select(kv => new { key = kv.Key, value = new { stringValue = kv.Value } }).ToArray()
+                    : Array.Empty<object>();
+
+                return new
+                {
+                    timeUnixNano = l.TimeNano.ToString(),
+                    observedTimeUnixNano = l.TimeNano.ToString(),
+                    severityText = l.SeverityText,
+                    severityNumber = l.SeverityNumber,
+                    body = new { stringValue = l.Body },
+                    traceId = l.TraceId,
+                    spanId = l.SpanId,
+                    attributes = attrs
+                };
+            }).ToArray();
+
+            var logPayload = new
+            {
+                resourceLogs = new object[]
+                {
+                    new
+                    {
+                        resource = new
+                        {
+                            attributes = new[]
+                            {
+                                new { key = "service.name", value = new { stringValue = _serviceName } }
+                            }
+                        },
+                        scopeLogs = new[]
+                        {
+                            new
+                            {
+                                logRecords = logRecords
+                            }
+                        }
+                    }
+                }
+            };
+
+            string json = JsonSerializer.Serialize(logPayload);
+            var res = await _http.PostAsync($"{_otlpBaseUrl}/v1/logs", new StringContent(json, Encoding.UTF8, "application/json"), ct);
+            Console.WriteLine($"[TelemetryDispatcher] Emitted {pendingLogs.Count} log records to {_otlpBaseUrl}/v1/logs -> {res.StatusCode}");
         }
     }
 }

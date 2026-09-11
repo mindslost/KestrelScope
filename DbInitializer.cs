@@ -65,6 +65,20 @@ public static class DbInitializer
                 Timestamp DATETIME NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_traces_timestamp ON Traces(Timestamp);
+
+            CREATE TABLE IF NOT EXISTS Logs (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Timestamp DATETIME NOT NULL,
+                TraceId TEXT,
+                SpanId TEXT,
+                ServiceName TEXT NOT NULL,
+                SeverityText TEXT NOT NULL,
+                SeverityNumber INTEGER NOT NULL,
+                Body TEXT NOT NULL,
+                AttributesJson TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_logs_lookup ON Logs(ServiceName, Timestamp);
+            CREATE INDEX IF NOT EXISTS idx_logs_trace ON Logs(TraceId);
         ";
 
         using (var cmd = connection.CreateCommand())
@@ -135,6 +149,55 @@ public static class DbInitializer
 
                 trans.Commit();
                 Console.WriteLine("[KestrelScope] Seeded baseline 24-hour telemetry samples.");
+            }
+        }
+
+        // Seed baseline logs if Logs table is empty
+        using (var logsCountCmd = connection.CreateCommand())
+        {
+            logsCountCmd.CommandText = "SELECT COUNT(*) FROM Logs;";
+            long count = (long)(logsCountCmd.ExecuteScalar() ?? 0L);
+            if (count == 0)
+            {
+                using var insertLogCmd = connection.CreateCommand();
+                insertLogCmd.CommandText = @"
+                    INSERT INTO Logs (Timestamp, TraceId, SpanId, ServiceName, SeverityText, SeverityNumber, Body, AttributesJson)
+                    VALUES (@time, @traceId, @spanId, @service, @sevText, @sevNum, @body, @attrs);";
+
+                var pTime = insertLogCmd.Parameters.Add("@time", SqliteType.Text);
+                var pTraceId = insertLogCmd.Parameters.Add("@traceId", SqliteType.Text);
+                var pSpanId = insertLogCmd.Parameters.Add("@spanId", SqliteType.Text);
+                var pService = insertLogCmd.Parameters.Add("@service", SqliteType.Text);
+                var pSevText = insertLogCmd.Parameters.Add("@sevText", SqliteType.Text);
+                var pSevNum = insertLogCmd.Parameters.Add("@sevNum", SqliteType.Integer);
+                var pBody = insertLogCmd.Parameters.Add("@body", SqliteType.Text);
+                var pAttrs = insertLogCmd.Parameters.Add("@attrs", SqliteType.Text);
+
+                var now = DateTime.UtcNow;
+                var baselineLogs = new (int offsetMin, string sevText, int sevNum, string body, string? trace, string? span)[]
+                {
+                    (45, "INFO", 9, "Application host started successfully in production environment.", null, null),
+                    (30, "INFO", 9, "Connection pool initialized to internal storage engine.", null, null),
+                    (15, "WARN", 13, "Degraded query performance detected on cold cache access.", null, null),
+                    (5, "INFO", 9, "Batch telemetry sync completed for order-processor-service.", null, null),
+                    (1, "INFO", 9, "System health check status reported OK.", null, null)
+                };
+
+                pService.Value = "order-processor-service";
+                pAttrs.Value = "{}";
+
+                foreach (var log in baselineLogs)
+                {
+                    pTime.Value = now.AddMinutes(-log.offsetMin).ToString("o");
+                    pSevText.Value = log.sevText;
+                    pSevNum.Value = log.sevNum;
+                    pBody.Value = log.body;
+                    pTraceId.Value = log.trace ?? (object)DBNull.Value;
+                    pSpanId.Value = log.span ?? (object)DBNull.Value;
+                    insertLogCmd.ExecuteNonQuery();
+                }
+
+                Console.WriteLine("[KestrelScope] Seeded baseline log records.");
             }
         }
 

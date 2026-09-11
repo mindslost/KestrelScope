@@ -321,6 +321,9 @@ async function initTraces() {
   const timelineSpans = document.getElementById('timelineSpans');
   const timelineTitle = document.getElementById('timelineTitle');
 
+  const urlParams = new URLSearchParams(window.location.search);
+  const paramTraceId = urlParams.get('traceId');
+
   let tracesData = [];
 
   async function loadTraces() {
@@ -328,7 +331,9 @@ async function initTraces() {
       const res = await fetch('/api/traces?minutes=120&limit=100');
       tracesData = await res.json();
       renderTraceTable(tracesData);
-      if (tracesData.length > 0) {
+      if (paramTraceId) {
+        selectTrace(paramTraceId);
+      } else if (tracesData.length > 0) {
         selectTrace(tracesData[0].traceId);
       }
     } catch (err) {
@@ -346,6 +351,9 @@ async function initTraces() {
     spans.forEach(span => {
       const tr = document.createElement('tr');
       tr.dataset.traceId = span.traceId;
+      if (paramTraceId === span.traceId) {
+        tr.classList.add('selected');
+      }
 
       let statusBadge = '<span class="badge badge-ok">200 OK</span>';
       if (span.statusCode === 'Error' || span.statusCode === '2') {
@@ -382,6 +390,10 @@ async function initTraces() {
 
   async function selectTrace(traceId) {
     timelineTitle.textContent = `Trace Timeline: ${traceId.substring(0, 8)}`;
+    const traceActions = document.getElementById('traceActions');
+    if (traceActions) {
+      traceActions.innerHTML = `<a href="/logs.html?traceId=${encodeURIComponent(traceId)}" class="trace-pill" style="font-size:0.8rem; padding:0.35rem 0.75rem;">📜 View Correlated Logs</a>`;
+    }
     timelineSpans.innerHTML = '<div style="color:#94a3b8;padding:1rem;">Loading span waterfall...</div>';
 
     try {
@@ -584,5 +596,167 @@ async function initAlerts() {
   };
 
   await loadAlerts();
+}
+
+// ============================================================================
+// Logs Explorer Controller
+// ============================================================================
+let logTimeMinutes = 60;
+let logSearchDebounceTimer = null;
+
+async function initLogs() {
+  await checkAuth();
+
+  const serviceSelect = document.getElementById('logServiceSelect');
+  const traceInput = document.getElementById('logTraceInput');
+
+  // Check URL parameters (e.g. from trace click: /logs.html?traceId=...)
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.has('traceId')) {
+    traceInput.value = urlParams.get('traceId');
+  }
+
+  // Load log services
+  try {
+    const res = await fetch('/api/logs/services');
+    const services = await res.json();
+    services.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s;
+      opt.textContent = s;
+      if (urlParams.get('service') === s) opt.selected = true;
+      serviceSelect.appendChild(opt);
+    });
+  } catch (err) {
+    console.error('Failed to load log services', err);
+  }
+
+  await loadLogs();
+
+  // Auto-refresh every 10 seconds
+  setInterval(loadLogs, 10000);
+}
+
+function setLogTimeWindow(minutes) {
+  logTimeMinutes = minutes;
+  document.querySelectorAll('.time-btn').forEach(btn => {
+    btn.classList.toggle('active', parseInt(btn.dataset.minutes) === minutes);
+  });
+  loadLogs();
+}
+
+function debounceLogSearch() {
+  clearTimeout(logSearchDebounceTimer);
+  logSearchDebounceTimer = setTimeout(loadLogs, 350);
+}
+
+async function loadLogs() {
+  const service = document.getElementById('logServiceSelect')?.value || '';
+  const severity = document.getElementById('logSeveritySelect')?.value || '';
+  const query = document.getElementById('logSearchInput')?.value || '';
+  const traceId = document.getElementById('logTraceInput')?.value || '';
+  const tbody = document.getElementById('logsTableBody');
+
+  try {
+    const params = new URLSearchParams({
+      minutes: logTimeMinutes,
+      limit: 150
+    });
+    if (service) params.append('service', service);
+    if (severity) params.append('severity', severity);
+    if (query) params.append('query', query);
+    if (traceId) params.append('traceId', traceId);
+
+    const res = await fetch(`/api/logs?${params.toString()}`);
+    const logs = await res.json();
+
+    // Update Stats
+    let total = logs.length;
+    let errors = 0;
+    let warns = 0;
+    let infos = 0;
+
+    logs.forEach(l => {
+      const sev = (l.severityText || '').toUpperCase();
+      if (sev === 'ERROR' || sev === 'FATAL') errors++;
+      else if (sev === 'WARN') warns++;
+      else infos++;
+    });
+
+    const statTotal = document.getElementById('statTotalLogs');
+    const statError = document.getElementById('statErrorLogs');
+    const statWarn = document.getElementById('statWarnLogs');
+    const statInfo = document.getElementById('statInfoLogs');
+    if (statTotal) statTotal.textContent = total;
+    if (statError) statError.textContent = errors;
+    if (statWarn) statWarn.textContent = warns;
+    if (statInfo) statInfo.textContent = infos;
+
+    // Render Table
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    if (logs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:2.5rem;">No log events matched the current filters</td></tr>';
+      return;
+    }
+
+    logs.forEach(log => {
+      const tr = document.createElement('tr');
+      const sev = (log.severityText || 'INFO').toUpperCase();
+      let badgeClass = 'log-badge-info';
+      if (sev === 'ERROR' || sev === 'FATAL') badgeClass = 'log-badge-error';
+      else if (sev === 'WARN') badgeClass = 'log-badge-warn';
+      else if (sev === 'DEBUG' || sev === 'TRACE') badgeClass = 'log-badge-debug';
+
+      const d = new Date(log.timestamp);
+      const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + 
+        '.' + String(d.getMilliseconds()).padStart(3, '0');
+
+      let traceCol = '<span style="color:#64748b; font-size:0.75rem;">—</span>';
+      if (log.traceId) {
+        traceCol = `<a href="/traces.html?traceId=${encodeURIComponent(log.traceId)}" class="trace-pill" title="Click to view full trace in Traces Explorer">🔍 ${log.traceId.substring(0, 8)}...</a>`;
+      }
+
+      let attrsHtml = '';
+      if (log.attributesJson && log.attributesJson !== '{}') {
+        try {
+          const parsed = JSON.parse(log.attributesJson);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const attrPairs = parsed.map(a => `${a.key}=${JSON.stringify(a.value?.stringValue ?? a.value)}`).join('  ');
+            attrsHtml = `<div class="log-attrs-box">${escapeHtml(attrPairs)}</div>`;
+          } else if (typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+            attrsHtml = `<div class="log-attrs-box">${escapeHtml(JSON.stringify(parsed))}</div>`;
+          }
+        } catch {
+          attrsHtml = `<div class="log-attrs-box">${escapeHtml(log.attributesJson)}</div>`;
+        }
+      }
+
+      tr.innerHTML = `
+        <td style="font-family:ui-monospace, monospace; font-size:0.8rem; color:#94a3b8;">${timeStr}</td>
+        <td><span class="log-badge ${badgeClass}">${sev}</span></td>
+        <td><span style="font-weight:600; color:#e2e8f0;">${escapeHtml(log.serviceName)}</span></td>
+        <td class="log-body-cell">
+          <div>${escapeHtml(log.body)}</div>
+          ${attrsHtml}
+        </td>
+        <td>${traceCol}</td>
+      `;
+
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error('Failed to load logs', err);
+  }
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 

@@ -276,4 +276,70 @@ public class EndToEndPipelineTests : IAsyncLifetime
 
         Assert.True(triggeredAlert.ValueKind != JsonValueKind.Undefined, "Webhook should have captured FIRING alert payload.");
     }
+
+    [Fact]
+    public async Task Test4_Logs_IngestionAndTraceCorrelation()
+    {
+        // Step 1: Create a normal order to generate INFO logs
+        var orderPayload = JsonSerializer.Serialize(new
+        {
+            customerId = "CUST-LOGS-77",
+            totalAmount = 250.00m
+        });
+
+        var orderRes = await _http.PostAsync(
+            $"{_sampleServiceUrl}/api/orders",
+            new StringContent(orderPayload, Encoding.UTF8, "application/json")
+        );
+        Assert.Equal(HttpStatusCode.Created, orderRes.StatusCode);
+
+        // Step 2: Trigger order failure to generate WARN and ERROR logs
+        var failRes = await _http.PostAsync($"{_sampleServiceUrl}/api/orders/fail", null);
+        Assert.Equal(HttpStatusCode.InternalServerError, failRes.StatusCode);
+
+        // Step 3: Flush telemetry
+        await _http.PostAsync($"{_sampleServiceUrl}/api/telemetry/flush", null);
+        await Task.Delay(500);
+
+        // Step 4: Query logs for order-service from KestrelScope
+        var logsRes = await _http.GetAsync($"{_kestrelScopeUrl}/api/logs?service=order-service&limit=50");
+        Assert.Equal(HttpStatusCode.OK, logsRes.StatusCode);
+        using var logsDoc = await JsonDocument.ParseAsync(await logsRes.Content.ReadAsStreamAsync());
+        var logs = logsDoc.RootElement.EnumerateArray().ToList();
+        Assert.NotEmpty(logs);
+
+        // Step 5: Assert existence of INFO, WARN, and ERROR logs
+        var severities = logs.Select(l => l.GetProperty("severityText").GetString()).ToList();
+        Assert.Contains("INFO", severities);
+        Assert.Contains("WARN", severities);
+        Assert.Contains("ERROR", severities);
+
+        // Step 6: Assert text search query filtering
+        var searchRes = await _http.GetAsync($"{_kestrelScopeUrl}/api/logs?service=order-service&query=declined");
+        Assert.Equal(HttpStatusCode.OK, searchRes.StatusCode);
+        using var searchDoc = await JsonDocument.ParseAsync(await searchRes.Content.ReadAsStreamAsync());
+        var searchResults = searchDoc.RootElement.EnumerateArray().ToList();
+        Assert.NotEmpty(searchResults);
+        Assert.Contains("Payment declined", searchResults.First().GetProperty("body").GetString());
+
+        // Step 7: Assert bidirectional trace correlation
+        var errorLog = logs.FirstOrDefault(l => l.GetProperty("severityText").GetString() == "ERROR");
+        Assert.True(errorLog.ValueKind != JsonValueKind.Undefined);
+        string? traceId = errorLog.GetProperty("traceId").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(traceId));
+
+        var traceLogsRes = await _http.GetAsync($"{_kestrelScopeUrl}/api/logs?traceId={traceId}");
+        Assert.Equal(HttpStatusCode.OK, traceLogsRes.StatusCode);
+        using var traceLogsDoc = await JsonDocument.ParseAsync(await traceLogsRes.Content.ReadAsStreamAsync());
+        var correlatedLogs = traceLogsDoc.RootElement.EnumerateArray().ToList();
+        Assert.NotEmpty(correlatedLogs);
+        Assert.All(correlatedLogs, l => Assert.Equal(traceId, l.GetProperty("traceId").GetString()));
+
+        // Also verify the trace itself exists in the Traces table
+        var traceDetailRes = await _http.GetAsync($"{_kestrelScopeUrl}/api/traces/{traceId}");
+        Assert.Equal(HttpStatusCode.OK, traceDetailRes.StatusCode);
+        using var traceDetailDoc = await JsonDocument.ParseAsync(await traceDetailRes.Content.ReadAsStreamAsync());
+        var traceSpans = traceDetailDoc.RootElement.EnumerateArray().ToList();
+        Assert.NotEmpty(traceSpans);
+    }
 }
