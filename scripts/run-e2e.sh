@@ -1,35 +1,36 @@
 #!/usr/bin/env bash
 set -e
 
-# Detect container runtime and socket
-if command -v docker &> /dev/null && docker info &> /dev/null; then
+# Configure Docker CE command
+if command -v docker &> /dev/null && docker compose version &> /dev/null; then
     COMPOSE_CMD="docker compose"
-elif [ -S "/run/user/$(id -u)/podman/podman.sock" ]; then
-    export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
-    COMPOSE_CMD="docker compose"
-elif command -v podman &> /dev/null; then
-    systemctl --user start podman.socket 2>/dev/null || true
-    if [ -S "/run/user/$(id -u)/podman/podman.sock" ]; then
-        export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
-        COMPOSE_CMD="docker compose"
-    else
-        COMPOSE_CMD="podman compose"
-    fi
+elif command -v docker-compose &> /dev/null; then
+    COMPOSE_CMD="docker-compose"
 else
-    echo "Error: Neither Docker nor Podman could be connected to."
+    echo "Error: Docker CE was not found or Docker Compose plugin is missing."
+    echo "Please ensure Docker CE is installed and running."
     exit 1
 fi
 
-echo "==> Using compose command: ${COMPOSE_CMD}"
+# Verify Docker daemon is responsive
+if ! docker info &> /dev/null; then
+    echo "Error: Docker daemon is not responding. Please check 'systemctl status docker'."
+    exit 1
+fi
 
-# Cleanup on exit trap (perserves database file on host)
+echo "==> Using Docker CE Compose: ${COMPOSE_CMD}"
+
+# Cleanup on exit trap (preserves database file on host)
 cleanup() {
     echo "==> Stopping test containers..."
     ${COMPOSE_CMD} --profile test down 2>/dev/null || true
 }
 trap cleanup EXIT
 
-echo "==> Building and starting KestrelScope and SampleOrderService..."
+# Pre-flight: ensure old test containers are stopped
+${COMPOSE_CMD} --profile test down 2>/dev/null || true
+
+echo "==> Building and starting KestrelScope and SampleOrderService with Docker CE..."
 ${COMPOSE_CMD} up -d --build kestrelscope sample-service
 
 echo "==> Waiting for services to become healthy..."
@@ -52,7 +53,7 @@ if [ $WAITED -ge $MAX_WAIT ]; then
     exit 1
 fi
 
-echo "==> Running End-to-End Test Suite against live containers..."
+echo "==> Running End-to-End Test Suite against live Docker CE containers..."
 dotnet test tests/KestrelScope.EndToEndTests/KestrelScope.EndToEndTests.csproj --verbosity normal
 
 echo "==> All End-to-End Tests Passed Successfully!"
