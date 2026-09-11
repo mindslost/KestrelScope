@@ -1,0 +1,61 @@
+services:
+  kestrelscope:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kestrelscope:latest
+    container_name: kestrelscope
+    ports:
+      - "5000:5000"
+    environment:
+      - ASPNETCORE_URLS=http://0.0.0.0:5000
+      - ConnectionStrings__DefaultConnection=Data Source=/app/host/observability.db;
+    volumes:
+      - ./:/app/host:Z
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 3s
+    restart: unless-stopped
+
+  sample-service:
+    build:
+      context: .
+      dockerfile: tests/SampleOrderService/Dockerfile
+    image: sample-order-service:latest
+    container_name: sample-order-service
+    ports:
+      - "8080:8080"
+    environment:
+      - ASPNETCORE_URLS=http://0.0.0.0:8080
+      - OTEL_SERVICE_NAME=order-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://kestrelscope:5000
+    depends_on:
+      kestrelscope:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 3s
+    restart: unless-stopped
+
+  e2e-tests:
+    build:
+      context: .
+      dockerfile: tests/KestrelScope.EndToEndTests/Dockerfile
+    image: kestrelscope-e2e-tests:latest
+    container_name: kestrelscope-e2e-tests
+    profiles: ["test"]
+    environment:
+      - KESTRELSCOPE_URL=http://kestrelscope:5000
+      - SAMPLE_SERVICE_URL=http://sample-service:8080
+      - INTERNAL_KESTRELSCOPE_URL=http://kestrelscope:5000/api/test-webhook
+    depends_on:
+      kestrelscope:
+        condition: service_healthy
+      sample-service:
+        condition: service_healthy

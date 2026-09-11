@@ -7,6 +7,16 @@ public static class DbInitializer
 {
     public static void Initialize(string connectionString)
     {
+        var csBuilder = new SqliteConnectionStringBuilder(connectionString);
+        if (!string.IsNullOrWhiteSpace(csBuilder.DataSource))
+        {
+            var dir = Path.GetDirectoryName(csBuilder.DataSource);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+        }
+
         using var connection = new SqliteConnection(connectionString);
         connection.Open();
 
