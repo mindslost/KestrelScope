@@ -31,6 +31,7 @@ public static class DbInitializer
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
                 Username TEXT UNIQUE NOT NULL,
                 PasswordHash TEXT NOT NULL,
+                Role TEXT NOT NULL DEFAULT 'standard',
                 CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -87,6 +88,18 @@ public static class DbInitializer
             cmd.ExecuteNonQuery();
         }
 
+        // Migrate existing Users table if Role column is missing
+        try
+        {
+            using var alterCmd = connection.CreateCommand();
+            alterCmd.CommandText = "ALTER TABLE Users ADD COLUMN Role TEXT NOT NULL DEFAULT 'standard';";
+            alterCmd.ExecuteNonQuery();
+        }
+        catch (SqliteException)
+        {
+            // Column already exists, safe to ignore
+        }
+
         // Seed default admin user if Users table is empty
         using (var countCmd = connection.CreateCommand())
         {
@@ -96,19 +109,28 @@ public static class DbInitializer
             {
                 using var insertCmd = connection.CreateCommand();
                 insertCmd.CommandText = @"
-                    INSERT INTO Users (Username, PasswordHash) 
-                    VALUES (@username, @passwordHash);";
+                    INSERT INTO Users (Username, PasswordHash, Role) 
+                    VALUES (@username, @passwordHash, 'admin');";
                 insertCmd.Parameters.AddWithValue("@username", "admin");
                 insertCmd.Parameters.AddWithValue("@passwordHash", Services.PasswordHasher.HashPassword("admin"));
                 insertCmd.ExecuteNonQuery();
                 Console.WriteLine("[KestrelScope] Seeded default administrator user: 'admin'");
             }
+            else
+            {
+                // Ensure default admin user has admin role if previously seeded
+                using var ensureAdminRoleCmd = connection.CreateCommand();
+                ensureAdminRoleCmd.CommandText = "UPDATE Users SET Role = 'admin' WHERE Username = 'admin' AND (Role IS NULL OR Role = '' OR Role = 'standard');";
+                ensureAdminRoleCmd.ExecuteNonQuery();
+            }
         }
 
         // Seed initial telemetry if MetricSamples table is empty
+        // Seed baseline telemetry if no samples exist within the last 24 hours
         using (var metricsCountCmd = connection.CreateCommand())
         {
-            metricsCountCmd.CommandText = "SELECT COUNT(*) FROM MetricSamples;";
+            metricsCountCmd.CommandText = "SELECT COUNT(*) FROM MetricSamples WHERE Timestamp >= @since;";
+            metricsCountCmd.Parameters.AddWithValue("@since", DateTime.UtcNow.AddHours(-24).ToString("o"));
             long count = (long)(metricsCountCmd.ExecuteScalar() ?? 0L);
             if (count == 0)
             {
@@ -128,34 +150,98 @@ public static class DbInitializer
                 var pVal = insertSampleCmd.Parameters.Add("@val", SqliteType.Real);
                 var pTime = insertSampleCmd.Parameters.Add("@time", SqliteType.Text);
 
-                pService.Value = "order-processor-service";
+                pService.Value = "order-service";
 
                 foreach (int off in minuteOffsets)
                 {
                     var sampleTime = now.AddMinutes(-off).ToString("o");
-                    double latency = 160 + 100 * Math.Sin(off / 60.0) + rand.NextDouble() * 80;
-                    double memory = 260 + rand.NextDouble() * 50;
+                    double latencyVal = 65 + 30 * Math.Sin(off / 30.0) + rand.NextDouble() * 25;
+                    double ordersVal = 1 + rand.Next(0, 3);
 
-                    pMetric.Value = "http.server.duration";
-                    pVal.Value = Math.Round(latency, 2);
+                    pMetric.Value = "http.server.request.duration";
+                    pVal.Value = Math.Round(latencyVal, 2);
                     pTime.Value = sampleTime;
                     insertSampleCmd.ExecuteNonQuery();
 
-                    pMetric.Value = "process.memory.usage";
-                    pVal.Value = Math.Round(memory, 2);
+                    pMetric.Value = "orders.created.count";
+                    pVal.Value = ordersVal;
                     pTime.Value = sampleTime;
                     insertSampleCmd.ExecuteNonQuery();
                 }
 
                 trans.Commit();
-                Console.WriteLine("[KestrelScope] Seeded baseline 24-hour telemetry samples.");
+                Console.WriteLine("[KestrelScope] Seeded baseline 24-hour telemetry samples for 'order-service'.");
             }
         }
 
-        // Seed baseline logs if Logs table is empty
+        // Seed baseline traces if Traces table has no recent spans
+        using (var tracesCountCmd = connection.CreateCommand())
+        {
+            tracesCountCmd.CommandText = "SELECT COUNT(*) FROM Traces WHERE Timestamp >= @since;";
+            tracesCountCmd.Parameters.AddWithValue("@since", DateTime.UtcNow.AddHours(-24).ToString("o"));
+            long count = (long)(tracesCountCmd.ExecuteScalar() ?? 0L);
+            if (count == 0)
+            {
+                var now = DateTime.UtcNow;
+                using var trans = connection.BeginTransaction();
+                using var insertTraceCmd = connection.CreateCommand();
+                insertTraceCmd.Transaction = trans;
+                insertTraceCmd.CommandText = @"
+                    INSERT INTO Traces (TraceId, SpanId, ParentSpanId, ServiceName, SpanName, DurationMs, StatusCode, Timestamp)
+                    VALUES (@traceId, @spanId, @parentSpanId, @service, @spanName, @duration, @status, @time);";
+
+                var pTrace = insertTraceCmd.Parameters.Add("@traceId", SqliteType.Text);
+                var pSpan = insertTraceCmd.Parameters.Add("@spanId", SqliteType.Text);
+                var pParent = insertTraceCmd.Parameters.Add("@parentSpanId", SqliteType.Text);
+                var pService = insertTraceCmd.Parameters.Add("@service", SqliteType.Text);
+                var pName = insertTraceCmd.Parameters.Add("@spanName", SqliteType.Text);
+                var pDuration = insertTraceCmd.Parameters.Add("@duration", SqliteType.Real);
+                var pStatus = insertTraceCmd.Parameters.Add("@status", SqliteType.Text);
+                var pTime = insertTraceCmd.Parameters.Add("@time", SqliteType.Text);
+
+                int[] traceOffsets = [25, 12, 2];
+                foreach (int off in traceOffsets)
+                {
+                    string tId = Guid.NewGuid().ToString("N");
+                    string rootId = Guid.NewGuid().ToString("N")[..16];
+                    string invId = Guid.NewGuid().ToString("N")[..16];
+                    string payId = Guid.NewGuid().ToString("N")[..16];
+                    string dbId = Guid.NewGuid().ToString("N")[..16];
+                    string time = now.AddMinutes(-off).ToString("o");
+
+                    // Root span
+                    pTrace.Value = tId; pSpan.Value = rootId; pParent.Value = DBNull.Value;
+                    pService.Value = "order-service"; pName.Value = "POST /api/orders";
+                    pDuration.Value = 78.5; pStatus.Value = "1"; pTime.Value = time;
+                    insertTraceCmd.ExecuteNonQuery();
+
+                    // Inventory step
+                    pSpan.Value = invId; pParent.Value = rootId; pName.Value = "InventoryService.ValidateStock";
+                    pDuration.Value = 16.0; pStatus.Value = "1";
+                    insertTraceCmd.ExecuteNonQuery();
+
+                    // Payment step
+                    pSpan.Value = payId; pParent.Value = rootId; pName.Value = "PaymentGateway.ChargeCard";
+                    pDuration.Value = 39.5; pStatus.Value = "1";
+                    insertTraceCmd.ExecuteNonQuery();
+
+                    // DB step
+                    pSpan.Value = dbId; pParent.Value = rootId; pName.Value = "OrderRepository.SaveOrder";
+                    pDuration.Value = 20.0; pStatus.Value = "1";
+                    insertTraceCmd.ExecuteNonQuery();
+                }
+
+                trans.Commit();
+                Console.WriteLine("[KestrelScope] Seeded baseline trace spans.");
+            }
+        }
+
+        // Seed baseline logs if Logs table has no recent entries
         using (var logsCountCmd = connection.CreateCommand())
         {
             logsCountCmd.CommandText = "SELECT COUNT(*) FROM Logs;";
+            logsCountCmd.CommandText = "SELECT COUNT(*) FROM Logs WHERE Timestamp >= @since;";
+            logsCountCmd.Parameters.AddWithValue("@since", DateTime.UtcNow.AddHours(-24).ToString("o"));
             long count = (long)(logsCountCmd.ExecuteScalar() ?? 0L);
             if (count == 0)
             {
@@ -180,10 +266,12 @@ public static class DbInitializer
                     (30, "INFO", 9, "Connection pool initialized to internal storage engine.", null, null),
                     (15, "WARN", 13, "Degraded query performance detected on cold cache access.", null, null),
                     (5, "INFO", 9, "Batch telemetry sync completed for order-processor-service.", null, null),
+                    (5, "INFO", 9, "Batch telemetry sync completed for order-service.", null, null),
                     (1, "INFO", 9, "System health check status reported OK.", null, null)
                 };
 
                 pService.Value = "order-processor-service";
+                pService.Value = "order-service";
                 pAttrs.Value = "{}";
 
                 foreach (var log in baselineLogs)

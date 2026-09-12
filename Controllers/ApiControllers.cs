@@ -18,7 +18,20 @@ public class UserRow
     public long Id { get; set; }
     public string Username { get; set; } = "";
     public string PasswordHash { get; set; } = "";
+    public string Role { get; set; } = "standard";
+    public string? CreatedAt { get; set; }
 }
+
+public class UserDto
+{
+    public long Id { get; set; }
+    public string Username { get; set; } = "";
+    public string Role { get; set; } = "standard";
+    public string? CreatedAt { get; set; }
+}
+
+public record CreateUserRequest(string Username, string Password, string Role);
+public record UpdateUserRequest(string? Role, string? Password);
 
 public class AlertRuleDto
 {
@@ -87,7 +100,7 @@ public class AuthController : ControllerBase
         await conn.OpenAsync();
 
         var user = await conn.QuerySingleOrDefaultAsync<UserRow>(
-            "SELECT Id, Username, PasswordHash FROM Users WHERE Username = @Username;",
+            "SELECT Id, Username, PasswordHash, Role, CreatedAt FROM Users WHERE Username = @Username;",
             new { req.Username }
         );
 
@@ -96,10 +109,14 @@ public class AuthController : ControllerBase
             return Unauthorized(new { error = "Invalid credentials." });
         }
 
+        string normalizedRole = string.Equals(user.Role, "admin", StringComparison.OrdinalIgnoreCase)
+            ? "Admin"
+            : "Standard";
+
         var claims = new List<Claim>
         {
             new(ClaimTypes.Name, user.Username),
-            new(ClaimTypes.Role, "Admin"),
+            new(ClaimTypes.Role, normalizedRole),
             new("UserId", user.Id.ToString())
         };
 
@@ -112,7 +129,7 @@ public class AuthController : ControllerBase
             ExpiresUtc = DateTimeOffset.UtcNow.AddDays(7)
         });
 
-        return Ok(new { status = "success", username = user.Username, role = "Admin" });
+        return Ok(new { status = "success", username = user.Username, role = normalizedRole });
     }
 
     [HttpPost("logout")]
@@ -130,7 +147,7 @@ public class AuthController : ControllerBase
             return Ok(new
             {
                 username = User.Identity.Name,
-                role = User.FindFirst(ClaimTypes.Role)?.Value ?? "Admin",
+                role = User.FindFirst(ClaimTypes.Role)?.Value ?? "Standard",
                 isAuthenticated = true
             });
         }
@@ -260,6 +277,7 @@ public class AlertsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> SaveRule([FromBody] AlertRuleDto rule)
     {
         if (string.IsNullOrWhiteSpace(rule.Name) || string.IsNullOrWhiteSpace(rule.MetricName) || string.IsNullOrWhiteSpace(rule.WebhookUrl))
@@ -294,6 +312,7 @@ public class AlertsController : ControllerBase
     }
 
     [HttpPatch("{id}/toggle")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> ToggleRule(long id)
     {
         using var conn = new SqliteConnection(_dbConn);
@@ -314,6 +333,7 @@ public class AlertsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteRule(long id)
     {
         using var conn = new SqliteConnection(_dbConn);
@@ -321,6 +341,151 @@ public class AlertsController : ControllerBase
         if (affected == 0)
             return NotFound(new { error = $"Alert rule #{id} not found." });
 
+        return Ok(new { status = "deleted", id });
+    }
+}
+#endregion
+
+#region Users Controller (/api/users)
+[ApiController]
+[Route("api/users")]
+[Authorize(Roles = "Admin")]
+public class UsersController : ControllerBase
+{
+    private readonly string _dbConn;
+
+    public UsersController(IConfiguration config)
+    {
+        _dbConn = config.GetConnectionString("DefaultConnection") ?? "Data Source=observability.db;";
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetUsers()
+    {
+        using var conn = new SqliteConnection(_dbConn);
+        var users = await conn.QueryAsync<UserDto>(
+            "SELECT Id, Username, Role, CreatedAt FROM Users ORDER BY Id ASC;"
+        );
+        return Ok(users);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Username) || string.IsNullOrWhiteSpace(req.Password))
+            return BadRequest(new { error = "Username and password are required." });
+
+        string role = string.Equals(req.Role, "admin", StringComparison.OrdinalIgnoreCase) ? "admin" : "standard";
+
+        using var conn = new SqliteConnection(_dbConn);
+        await conn.OpenAsync();
+
+        var existing = await conn.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM Users WHERE LOWER(Username) = LOWER(@Username);",
+            new { req.Username }
+        );
+        if (existing > 0)
+            return BadRequest(new { error = $"User '{req.Username}' already exists." });
+
+        string passwordHash = PasswordHasher.HashPassword(req.Password);
+
+        long newId = await conn.QuerySingleAsync<long>(
+            @"INSERT INTO Users (Username, PasswordHash, Role) 
+              VALUES (@Username, @PasswordHash, @Role);
+              SELECT last_insert_rowid();",
+            new { req.Username, PasswordHash = passwordHash, Role = role }
+        );
+
+        var created = await conn.QuerySingleAsync<UserDto>(
+            "SELECT Id, Username, Role, CreatedAt FROM Users WHERE Id = @newId;",
+            new { newId }
+        );
+
+        return Ok(created);
+    }
+
+    [HttpPatch("{id}")]
+    public async Task<IActionResult> UpdateUser(long id, [FromBody] UpdateUserRequest req)
+    {
+        using var conn = new SqliteConnection(_dbConn);
+        await conn.OpenAsync();
+
+        var user = await conn.QuerySingleOrDefaultAsync<UserRow>(
+            "SELECT Id, Username, PasswordHash, Role, CreatedAt FROM Users WHERE Id = @id;",
+            new { id }
+        );
+        if (user == null)
+            return NotFound(new { error = $"User #{id} not found." });
+
+        string targetRole = user.Role;
+        if (!string.IsNullOrWhiteSpace(req.Role))
+        {
+            targetRole = string.Equals(req.Role, "admin", StringComparison.OrdinalIgnoreCase) ? "admin" : "standard";
+            if (string.Equals(user.Role, "admin", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(targetRole, "admin", StringComparison.OrdinalIgnoreCase))
+            {
+                int adminCount = await conn.ExecuteScalarAsync<int>(
+                    "SELECT COUNT(*) FROM Users WHERE LOWER(Role) = 'admin';"
+                );
+                if (adminCount <= 1)
+                {
+                    return BadRequest(new { error = "Cannot demote the last remaining administrator." });
+                }
+            }
+        }
+
+        string passwordHash = user.PasswordHash;
+        if (!string.IsNullOrWhiteSpace(req.Password))
+        {
+            passwordHash = PasswordHasher.HashPassword(req.Password);
+        }
+
+        await conn.ExecuteAsync(
+            @"UPDATE Users 
+              SET Role = @Role, PasswordHash = @PasswordHash 
+              WHERE Id = @id;",
+            new { Role = targetRole, PasswordHash = passwordHash, id }
+        );
+
+        var updated = await conn.QuerySingleAsync<UserDto>(
+            "SELECT Id, Username, Role, CreatedAt FROM Users WHERE Id = @id;",
+            new { id }
+        );
+
+        return Ok(updated);
+    }
+
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> DeleteUser(long id)
+    {
+        using var conn = new SqliteConnection(_dbConn);
+        await conn.OpenAsync();
+
+        var user = await conn.QuerySingleOrDefaultAsync<UserRow>(
+            "SELECT Id, Username, PasswordHash, Role, CreatedAt FROM Users WHERE Id = @id;",
+            new { id }
+        );
+        if (user == null)
+            return NotFound(new { error = $"User #{id} not found." });
+
+        var currentUserIdStr = User.FindFirst("UserId")?.Value;
+        if (long.TryParse(currentUserIdStr, out long currentUserId) && currentUserId == id)
+        {
+            return BadRequest(new { error = "You cannot delete your own account." });
+        }
+
+        if (string.Equals(user.Role, "admin", StringComparison.OrdinalIgnoreCase))
+        {
+            int adminCount = await conn.ExecuteScalarAsync<int>(
+                "SELECT COUNT(*) FROM Users WHERE LOWER(Role) = 'admin';"
+            );
+            if (adminCount <= 1)
+            {
+                return BadRequest(new { error = "Cannot delete the last remaining administrator." });
+            }
+        }
+
+        await conn.ExecuteAsync("DELETE FROM Users WHERE Id = @id;", new { id });
         return Ok(new { status = "deleted", id });
     }
 }
@@ -354,9 +519,8 @@ public class TracesController : ControllerBase
         string sql = @"
             SELECT TraceId, SpanId, ParentSpanId, ServiceName, SpanName, DurationMs, StatusCode, Timestamp
             FROM Traces
-            WHERE Timestamp >= @windowStart
+            WHERE ((@traceId IS NOT NULL AND TraceId = @traceId) OR (@traceId IS NULL AND Timestamp >= @windowStart))
               AND (@service IS NULL OR ServiceName = @service)
-              AND (@traceId IS NULL OR TraceId = @traceId)
             ORDER BY Timestamp DESC
             LIMIT @limit;";
 

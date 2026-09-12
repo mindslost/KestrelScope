@@ -22,6 +22,11 @@ builder.Services.AddHttpClient();
 builder.Services.AddSingleton(new TelemetryDispatcher(serviceName, otlpEndpoint));
 builder.Services.AddHostedService(sp => sp.GetRequiredService<TelemetryDispatcher>());
 
+if (string.Equals(Environment.GetEnvironmentVariable("ENABLE_SIMULATED_TRAFFIC"), "true", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddHostedService<SimulatedTrafficWorker>();
+}
+
 var app = builder.Build();
 
 var dispatcher = app.Services.GetRequiredService<TelemetryDispatcher>();
@@ -366,6 +371,91 @@ public class TelemetryDispatcher : BackgroundService
             string json = JsonSerializer.Serialize(logPayload);
             var res = await _http.PostAsync($"{_otlpBaseUrl}/v1/logs", new StringContent(json, Encoding.UTF8, "application/json"), ct);
             Console.WriteLine($"[TelemetryDispatcher] Emitted {pendingLogs.Count} log records to {_otlpBaseUrl}/v1/logs -> {res.StatusCode}");
+        }
+    }
+}
+#endregion
+
+#region Simulated Traffic Background Worker
+public class SimulatedTrafficWorker : BackgroundService
+{
+    private readonly TelemetryDispatcher _dispatcher;
+    private readonly Random _rand = new();
+
+    public SimulatedTrafficWorker(TelemetryDispatcher dispatcher)
+    {
+        _dispatcher = dispatcher;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        await Task.Delay(2000, stoppingToken);
+        int orderSeq = 100;
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                orderSeq++;
+                bool isError = _rand.Next(0, 12) == 0;
+                string traceId = Guid.NewGuid().ToString("N");
+                string rootSpanId = Guid.NewGuid().ToString("N")[..16];
+                long startNano = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000;
+                string orderId = $"ORD-{orderSeq}";
+
+                if (!isError)
+                {
+                    double duration = 40 + _rand.NextDouble() * 85;
+                    string invSpanId = Guid.NewGuid().ToString("N")[..16];
+                    string paySpanId = Guid.NewGuid().ToString("N")[..16];
+                    string dbSpanId = Guid.NewGuid().ToString("N")[..16];
+
+                    long invStart = startNano + 2_000_000;
+                    long invEnd = invStart + 15_000_000;
+                    _dispatcher.RecordSpan(traceId, invSpanId, rootSpanId, "InventoryService.ValidateStock", invStart, invEnd, 1);
+
+                    long payStart = invEnd + 3_000_000;
+                    long payEnd = payStart + 35_000_000;
+                    _dispatcher.RecordSpan(traceId, paySpanId, rootSpanId, "PaymentGateway.ChargeCard", payStart, payEnd, 1);
+
+                    long dbStart = payEnd + 2_000_000;
+                    long dbEnd = dbStart + 20_000_000;
+                    _dispatcher.RecordSpan(traceId, dbSpanId, rootSpanId, "OrderRepository.SaveOrder", dbStart, dbEnd, 1);
+
+                    long endNano = dbEnd + 2_000_000;
+                    _dispatcher.RecordSpan(traceId, rootSpanId, null, "POST /api/orders", startNano, endNano, 1);
+
+                    _dispatcher.RecordLog(traceId, invSpanId, "INFO", 9, $"Inventory reservation confirmed for order {orderId}");
+                    _dispatcher.RecordLog(traceId, paySpanId, "INFO", 9, $"Card payment authorized for ${25 + _rand.NextDouble() * 150:F2}");
+                    _dispatcher.RecordLog(traceId, dbSpanId, "INFO", 9, $"Order {orderId} committed to database");
+
+                    _dispatcher.RecordMetric("http.server.request.duration", duration);
+                    _dispatcher.RecordMetric("orders.created.count", 1.0);
+                }
+                else
+                {
+                    double breachDuration = 350 + _rand.NextDouble() * 200;
+                    string paySpanId = Guid.NewGuid().ToString("N")[..16];
+                    long payStart = startNano + 5_000_000;
+                    long payEnd = startNano + 320_000_000;
+                    _dispatcher.RecordSpan(traceId, paySpanId, rootSpanId, "PaymentGateway.ChargeCard", payStart, payEnd, 2);
+
+                    long endNano = startNano + (long)(breachDuration * 1_000_000);
+                    _dispatcher.RecordSpan(traceId, rootSpanId, null, "POST /api/orders/fail", startNano, endNano, 2);
+
+                    _dispatcher.RecordLog(traceId, paySpanId, "WARN", 13, $"Payment gateway timeout on transaction {orderId} ({breachDuration:F1}ms)");
+                    _dispatcher.RecordLog(traceId, rootSpanId, "ERROR", 17, $"Order {orderId} failed: upstream payment provider rejected transaction");
+
+                    _dispatcher.RecordMetric("http.server.request.duration", breachDuration);
+                    _dispatcher.RecordMetric("orders.failed.count", 1.0);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SimulatedTrafficWorker] Warning: {ex.Message}");
+            }
+
+            await Task.Delay(_rand.Next(2500, 4000), stoppingToken);
         }
     }
 }

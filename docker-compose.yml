@@ -32,6 +32,7 @@ services:
       - ASPNETCORE_URLS=http://0.0.0.0:8080
       - OTEL_SERVICE_NAME=order-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://kestrelscope:5000
+      - ENABLE_SIMULATED_TRAFFIC=true
     depends_on:
       kestrelscope:
         condition: service_healthy

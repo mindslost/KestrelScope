@@ -851,6 +851,14 @@ body {
   height: 34px;
 }
 
+.traces-split-container .trace-table tbody tr.selected td {
+  background-color: rgba(15, 108, 189, 0.32) !important;
+}
+
+.traces-split-container .trace-table tbody tr.selected td:first-child {
+  border-left: 3px solid var(--fui-colorBrandBackground1) !important;
+}
+
 .traces-split-container .trace-table tbody td {
   padding: 0.35rem 0.75rem;
   vertical-align: middle;

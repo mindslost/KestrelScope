@@ -149,6 +149,20 @@ public class EndToEndPipelineTests : IAsyncLifetime
         return null;
     }
 
+    private async Task<HttpClient> CreateAuthenticatedClientAsync(string username, string password)
+    {
+        var cookies = new CookieContainer();
+        var handler = new HttpClientHandler { CookieContainer = cookies, UseCookies = true };
+        var client = new HttpClient(handler);
+        var loginPayload = JsonSerializer.Serialize(new { username, password });
+        var loginRes = await client.PostAsync(
+            $"{_kestrelScopeUrl}/api/auth/login",
+            new StringContent(loginPayload, Encoding.UTF8, "application/json")
+        );
+        Assert.Equal(HttpStatusCode.OK, loginRes.StatusCode);
+        return client;
+    }
+
     [Fact]
     public async Task Test1_Services_HealthCheck()
     {
@@ -252,7 +266,8 @@ public class EndToEndPipelineTests : IAsyncLifetime
             isEnabled = 1
         });
 
-        var createRuleRes = await _http.PostAsync(
+        var adminClient = await CreateAuthenticatedClientAsync("admin", "admin");
+        var createRuleRes = await adminClient.PostAsync(
             $"{_kestrelScopeUrl}/api/alerts",
             new StringContent(rulePayload, Encoding.UTF8, "application/json")
         );
@@ -359,5 +374,92 @@ public class EndToEndPipelineTests : IAsyncLifetime
         using var traceDetailDoc = await JsonDocument.ParseAsync(await traceDetailRes.Content.ReadAsStreamAsync());
         var traceSpans = traceDetailDoc.RootElement.EnumerateArray().ToList();
         Assert.NotEmpty(traceSpans);
+    }
+
+    [Fact]
+    public async Task Test5_UserManagement_And_RoleBasedAccessControl()
+    {
+        // 1. Admin creates standard user
+        var adminClient = await CreateAuthenticatedClientAsync("admin", "admin");
+
+        string testUsername = $"standard_{Guid.NewGuid():N}"[..18];
+        string testPassword = "Password123!";
+
+        var createPayload = JsonSerializer.Serialize(new
+        {
+            username = testUsername,
+            password = testPassword,
+            role = "standard"
+        });
+
+        var createRes = await adminClient.PostAsync(
+            $"{_kestrelScopeUrl}/api/users",
+            new StringContent(createPayload, Encoding.UTF8, "application/json")
+        );
+        Assert.Equal(HttpStatusCode.OK, createRes.StatusCode);
+        using var createdDoc = await JsonDocument.ParseAsync(await createRes.Content.ReadAsStreamAsync());
+        long createdId = createdDoc.RootElement.GetProperty("id").GetInt64();
+        Assert.Equal("standard", createdDoc.RootElement.GetProperty("role").GetString());
+
+        // 2. Verify user in GET /api/users (Admin only)
+        var usersRes = await adminClient.GetAsync($"{_kestrelScopeUrl}/api/users");
+        Assert.Equal(HttpStatusCode.OK, usersRes.StatusCode);
+        using var usersDoc = await JsonDocument.ParseAsync(await usersRes.Content.ReadAsStreamAsync());
+        var userItems = usersDoc.RootElement.EnumerateArray().ToList();
+        Assert.Contains(userItems, u => u.GetProperty("username").GetString() == testUsername);
+
+        // 3. Log in as standard user
+        var standardClient = await CreateAuthenticatedClientAsync(testUsername, testPassword);
+
+        // 4. Assert /api/auth/me returns Standard role
+        var meRes = await standardClient.GetAsync($"{_kestrelScopeUrl}/api/auth/me");
+        Assert.Equal(HttpStatusCode.OK, meRes.StatusCode);
+        using var meDoc = await JsonDocument.ParseAsync(await meRes.Content.ReadAsStreamAsync());
+        Assert.Equal("Standard", meDoc.RootElement.GetProperty("role").GetString());
+
+        // 5. Assert Standard user CANNOT modify users (403 Forbidden)
+        var forbiddenUsersRes = await standardClient.GetAsync($"{_kestrelScopeUrl}/api/users");
+        Assert.Equal(HttpStatusCode.Forbidden, forbiddenUsersRes.StatusCode);
+
+        // 6. Assert Standard user CANNOT create alerts (403 Forbidden)
+        var testAlertPayload = JsonSerializer.Serialize(new
+        {
+            name = "Forbidden Standard Alert",
+            metricName = "http.server.duration",
+            threshold = 999.0,
+            windowMinutes = 5,
+            webhookUrl = "http://127.0.0.1:5000/api/test-webhook",
+            isEnabled = 1
+        });
+        var forbiddenAlertRes = await standardClient.PostAsync(
+            $"{_kestrelScopeUrl}/api/alerts",
+            new StringContent(testAlertPayload, Encoding.UTF8, "application/json")
+        );
+        Assert.Equal(HttpStatusCode.Forbidden, forbiddenAlertRes.StatusCode);
+
+        // 7. Assert Standard user CAN view existing alerts (200 OK)
+        var getAlertsRes = await standardClient.GetAsync($"{_kestrelScopeUrl}/api/alerts");
+        Assert.Equal(HttpStatusCode.OK, getAlertsRes.StatusCode);
+
+        // 8. Admin updates standard user's role/password, then cleans up
+        var updatePayload = JsonSerializer.Serialize(new
+        {
+            role = "standard",
+            password = "NewPassword456!"
+        });
+        var patchRes = await adminClient.PatchAsync(
+            $"{_kestrelScopeUrl}/api/users/{createdId}",
+            new StringContent(updatePayload, Encoding.UTF8, "application/json")
+        );
+        Assert.Equal(HttpStatusCode.OK, patchRes.StatusCode);
+
+        // 9. Admin deletes standard user
+        var deleteRes = await adminClient.DeleteAsync($"{_kestrelScopeUrl}/api/users/{createdId}");
+        Assert.Equal(HttpStatusCode.OK, deleteRes.StatusCode);
+
+        // 10. Verify standard user is gone
+        var usersAfterDelete = await adminClient.GetAsync($"{_kestrelScopeUrl}/api/users");
+        using var afterDoc = await JsonDocument.ParseAsync(await usersAfterDelete.Content.ReadAsStreamAsync());
+        Assert.DoesNotContain(afterDoc.RootElement.EnumerateArray(), u => u.GetProperty("id").GetInt64() == createdId);
     }
 }

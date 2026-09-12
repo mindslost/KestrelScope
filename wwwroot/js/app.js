@@ -6,31 +6,58 @@
 // ============================================================================
 // Auth & User Management
 // ============================================================================
+let currentUser = null;
+
 async function checkAuth(isLoginPage = false) {
   try {
     const res = await fetch('/api/auth/me');
     const data = await res.json();
+    currentUser = data;
 
     if (isLoginPage) {
       if (data.isAuthenticated) {
         window.location.href = '/dashboard.html';
       }
       return;
+      return data;
     }
 
     if (!data.isAuthenticated) {
       window.location.href = '/login.html';
       return;
+      return null;
+    }
+
+    const isAdmin = data.role === 'Admin';
+    document.querySelectorAll('.nav-users-link').forEach(el => {
+      el.style.display = isAdmin ? 'inline-flex' : 'none';
+    });
+
+    const landingUsersBtn = document.getElementById('landingUsersBtn');
+    if (landingUsersBtn) {
+      landingUsersBtn.style.display = isAdmin ? 'inline-flex' : 'none';
+    }
+
+    if (window.location.pathname.endsWith('/users.html') || window.location.pathname.endsWith('users.html')) {
+      if (!isAdmin) {
+        window.location.href = '/dashboard.html';
+        return;
+        return null;
+      }
     }
 
     const avatarEl = document.getElementById('userAvatar');
     if (avatarEl && data.username) {
       avatarEl.textContent = data.username.substring(0, 2).toUpperCase();
       avatarEl.title = `Logged in as ${data.username}`;
+      avatarEl.title = `Logged in as ${data.username} (${data.role || 'Standard'})`;
     }
+
+    return data;
   } catch (err) {
     console.error('Auth verification failed', err);
     if (!isLoginPage) window.location.href = '/login.html';
+    return null;
   }
 }
 
@@ -78,6 +105,8 @@ let metricsChart = null;
 
 async function initDashboard() {
   await checkAuth();
+  const user = await checkAuth();
+  if (!user || !user.isAuthenticated) return;
 
   const serviceSelect = document.getElementById('serviceSelect');
   const metricSelect = document.getElementById('metricSelect');
@@ -121,6 +150,7 @@ async function initDashboard() {
         const opt = document.createElement('option');
         opt.value = s;
         opt.textContent = s;
+        if (s === 'order-service') opt.selected = true;
         serviceSelect.appendChild(opt);
       });
 
@@ -330,7 +360,8 @@ async function initDashboard() {
 // Traces Explorer Controller
 // ============================================================================
 async function initTraces() {
-  await checkAuth();
+  const user = await checkAuth();
+  if (!user || !user.isAuthenticated) return;
 
   const tbody = document.getElementById('traceTableBody');
   const searchInput = document.getElementById('traceSearch');
@@ -341,16 +372,36 @@ async function initTraces() {
   const paramTraceId = urlParams.get('traceId');
 
   let tracesData = [];
+  let activeTraceId = null;
 
   async function loadTraces() {
     try {
       const res = await fetch('/api/traces?minutes=120&limit=100');
       tracesData = await res.json();
+
+      // If a specific trace was requested (e.g. clicked from logs) but is not in the recent list,
+      // fetch it directly and prepend it so it appears in the Trace List
+      if (paramTraceId && !tracesData.some(t => t.traceId === paramTraceId)) {
+        try {
+          const specificRes = await fetch(`/api/traces/${encodeURIComponent(paramTraceId)}`);
+          if (specificRes.ok) {
+            const specificSpans = await specificRes.json();
+            if (specificSpans && specificSpans.length > 0) {
+              const root = specificSpans.find(s => !s.parentSpanId) || specificSpans[0];
+              tracesData.unshift(root);
+            }
+          }
+        } catch (e) {
+          console.warn('Could not fetch correlated trace details', e);
+        }
+      }
+
       renderTraceTable(tracesData);
-      if (paramTraceId) {
-        selectTrace(paramTraceId);
-      } else if (tracesData.length > 0) {
-        selectTrace(tracesData[0].traceId);
+
+      const targetTraceId = paramTraceId || (tracesData.length > 0 ? tracesData[0].traceId : null);
+      if (targetTraceId) {
+        // When opening from correlated logs, center the selected trace in view!
+        selectTrace(targetTraceId, paramTraceId ? 'center' : null);
       }
     } catch (err) {
       console.error('Failed to load traces', err);
@@ -367,7 +418,15 @@ async function initTraces() {
     spans.forEach(span => {
       const tr = document.createElement('tr');
       tr.dataset.traceId = span.traceId;
-      if (paramTraceId === span.traceId) {
+      if (span.parentSpanId == null) {
+        tr.dataset.isRoot = 'true';
+      }
+
+      const isCurrent = activeTraceId 
+        ? (activeTraceId === span.traceId) 
+        : (paramTraceId === span.traceId);
+
+      if (isCurrent) {
         tr.classList.add('selected');
       }
 
@@ -395,21 +454,44 @@ async function initTraces() {
       `;
 
       tr.addEventListener('click', () => {
-        document.querySelectorAll('.trace-table tr').forEach(r => r.classList.remove('selected'));
-        tr.classList.add('selected');
-        selectTrace(span.traceId);
+        selectTrace(span.traceId, 'nearest');
       });
 
       tbody.appendChild(tr);
     });
   }
 
-  async function selectTrace(traceId) {
+  async function selectTrace(traceId, scrollBlock = null) {
+    activeTraceId = traceId;
     timelineTitle.textContent = `Trace Timeline: ${traceId.substring(0, 8)}`;
     const traceActions = document.getElementById('traceActions');
     if (traceActions) {
       traceActions.innerHTML = `<a href="/logs.html?traceId=${encodeURIComponent(traceId)}" class="trace-pill" style="font-size:0.8rem; padding:0.35rem 0.75rem;">📜 View Correlated Logs</a>`;
     }
+
+    // Highlight matching row(s) in the table
+    let targetRow = null;
+    document.querySelectorAll('.trace-table tbody tr').forEach(r => {
+      if (r.dataset.traceId === traceId) {
+        r.classList.add('selected');
+        if (!targetRow || r.dataset.isRoot === 'true') {
+          targetRow = r;
+        }
+      } else {
+        r.classList.remove('selected');
+      }
+    });
+
+    // Scroll selected trace into view in the trace list
+    if (targetRow && scrollBlock) {
+      requestAnimationFrame(() => {
+        targetRow.scrollIntoView({ behavior: 'smooth', block: scrollBlock });
+      });
+      setTimeout(() => {
+        targetRow.scrollIntoView({ behavior: 'smooth', block: scrollBlock });
+      }, 100);
+    }
+
     timelineSpans.innerHTML = '<div style="color:#94a3b8;padding:1rem;">Loading span waterfall...</div>';
 
     try {
@@ -495,13 +577,21 @@ async function initTraces() {
 // Alerts Manager Controller
 // ============================================================================
 async function initAlerts() {
-  await checkAuth();
+  const user = await checkAuth();
+  if (!user || !user.isAuthenticated) return;
+  const isAdmin = user.role === 'Admin';
 
   const alertGrid = document.getElementById('alertGrid');
   const modal = document.getElementById('alertModal');
   const openBtn = document.getElementById('btnNewAlert');
   const cancelBtn = document.getElementById('btnCancelModal');
   const alertForm = document.getElementById('alertForm');
+  const readOnlyBanner = document.getElementById('standardUserAlertNotice');
+
+  if (!isAdmin) {
+    if (openBtn) openBtn.style.display = 'none';
+    if (readOnlyBanner) readOnlyBanner.style.display = 'flex';
+  }
 
   async function loadAlerts() {
     try {
@@ -516,7 +606,10 @@ async function initAlerts() {
   function renderAlerts(rules) {
     alertGrid.innerHTML = '';
     if (rules.length === 0) {
-      alertGrid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; color:#64748b; padding:3rem;">No alert rules defined. Click "New Alert" to configure one.</div>';
+      const emptyText = isAdmin 
+        ? 'No alert rules defined. Click "New Alert" to configure one.' 
+        : 'No alert rules defined.';
+      alertGrid.innerHTML = `<div style="grid-column: 1/-1; text-align:center; color:#64748b; padding:3rem;">${emptyText}</div>`;
       return;
     }
 
@@ -528,6 +621,28 @@ async function initAlerts() {
       const badge = isActive
         ? '<span class="badge badge-ok">Active</span>'
         : '<span class="badge badge-gray">Disabled</span>';
+
+      let actionsHtml = '';
+      if (isAdmin) {
+        actionsHtml = `
+          <div class="alert-card-actions">
+            <button class="btn-secondary btn-sm" onclick="toggleAlert(${rule.id})">
+              ${isActive ? 'Disable' : 'Enable'}
+            </button>
+            <button class="btn-secondary btn-sm" style="border-color: rgba(239,68,68,0.4); color: #fca5a5;" onclick="deleteAlert(${rule.id})">
+              Delete
+            </button>
+          </div>
+        `;
+      } else {
+        actionsHtml = `
+          <div class="alert-card-actions" style="justify-content: flex-end;">
+            <span style="font-size: 0.78rem; color: var(--fui-colorNeutralForeground4); font-style: italic;">
+              Admin access required to modify
+            </span>
+          </div>
+        `;
+      }
 
       card.innerHTML = `
         <div class="alert-card-header">
@@ -542,59 +657,64 @@ async function initAlerts() {
           <div>Evaluation Window: <strong>${rule.windowMinutes} min</strong></div>
           <div style="word-break: break-all; margin-top: 0.35rem; color: #64748b; font-size: 0.78rem;">${rule.webhookUrl}</div>
         </div>
-        <div class="alert-card-actions">
-          <button class="btn-secondary btn-sm" onclick="toggleAlert(${rule.id})">
-            ${isActive ? 'Disable' : 'Enable'}
-          </button>
-          <button class="btn-secondary btn-sm" style="border-color: rgba(239,68,68,0.4); color: #fca5a5;" onclick="deleteAlert(${rule.id})">
-            Delete
-          </button>
-        </div>
+        ${actionsHtml}
       `;
 
       alertGrid.appendChild(card);
     });
   }
 
-  // Modal handlers
-  openBtn.addEventListener('click', () => modal.classList.add('open'));
-  cancelBtn.addEventListener('click', () => modal.classList.remove('open'));
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) modal.classList.remove('open');
-  });
+  // Modal handlers (admin only)
+  if (openBtn) openBtn.addEventListener('click', () => modal.classList.add('open'));
+  if (cancelBtn) cancelBtn.addEventListener('click', () => modal.classList.remove('open'));
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.classList.remove('open');
+    });
+  }
 
-  alertForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  if (alertForm) {
+    alertForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
 
-    const newRule = {
-      name: document.getElementById('ruleName').value,
-      metricName: document.getElementById('metricName').value,
-      threshold: parseFloat(document.getElementById('threshold').value),
-      windowMinutes: parseInt(document.getElementById('windowMinutes').value, 10),
-      webhookUrl: document.getElementById('webhookUrl').value,
-      isEnabled: 1
-    };
+      const newRule = {
+        name: document.getElementById('ruleName').value,
+        metricName: document.getElementById('metricName').value,
+        threshold: parseFloat(document.getElementById('threshold').value),
+        windowMinutes: parseInt(document.getElementById('windowMinutes').value, 10),
+        webhookUrl: document.getElementById('webhookUrl').value,
+        isEnabled: 1
+      };
 
-    try {
-      const res = await fetch('/api/alerts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newRule)
-      });
+      try {
+        const res = await fetch('/api/alerts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newRule)
+        });
 
-      if (res.ok) {
-        modal.classList.remove('open');
-        alertForm.reset();
-        await loadAlerts();
+        if (res.ok) {
+          modal.classList.remove('open');
+          alertForm.reset();
+          await loadAlerts();
+        } else {
+          const errData = await res.json();
+          alert(errData.error || 'Failed to create alert rule.');
+        }
+      } catch (err) {
+        console.error('Failed to create alert rule', err);
       }
-    } catch (err) {
-      console.error('Failed to create alert rule', err);
-    }
-  });
+    });
+  }
 
   window.toggleAlert = async (id) => {
     try {
-      await fetch(`/api/alerts/${id}/toggle`, { method: 'PATCH' });
+      const res = await fetch(`/api/alerts/${id}/toggle`, { method: 'PATCH' });
+      if (!res.ok) {
+        const errData = await res.json();
+        alert(errData.error || 'Failed to toggle alert rule.');
+        return;
+      }
       await loadAlerts();
     } catch (err) {
       console.error('Failed to toggle alert', err);
@@ -604,7 +724,12 @@ async function initAlerts() {
   window.deleteAlert = async (id) => {
     if (!confirm('Are you sure you want to delete this alert rule?')) return;
     try {
-      await fetch(`/api/alerts/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/alerts/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const errData = await res.json();
+        alert(errData.error || 'Failed to delete alert rule.');
+        return;
+      }
       await loadAlerts();
     } catch (err) {
       console.error('Failed to delete alert', err);
@@ -621,7 +746,8 @@ let logTimeMinutes = 60;
 let logSearchDebounceTimer = null;
 
 async function initLogs() {
-  await checkAuth();
+  const user = await checkAuth();
+  if (!user || !user.isAuthenticated) return;
 
   const serviceSelect = document.getElementById('logServiceSelect');
   const traceInput = document.getElementById('logTraceInput');
@@ -772,4 +898,205 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+
+// ============================================================================
+// Users Management Controller
+// ============================================================================
+async function initUsers() {
+  const user = await checkAuth();
+  if (!user || !user.isAuthenticated) return;
+  if (user.role !== 'Admin') {
+    window.location.href = '/dashboard.html';
+    return;
+  }
+
+  const tableBody = document.getElementById('usersTableBody');
+  const modal = document.getElementById('userModal');
+  const modalTitle = document.getElementById('userModalTitle');
+  const openBtn = document.getElementById('btnNewUser');
+  const cancelBtn = document.getElementById('btnCancelUserModal');
+  const userForm = document.getElementById('userForm');
+  const userIdInput = document.getElementById('userId');
+  const usernameInput = document.getElementById('userUsername');
+  const roleSelect = document.getElementById('userRole');
+  const passwordInput = document.getElementById('userPassword');
+  const passwordHelp = document.getElementById('passwordHelp');
+  const userFormError = document.getElementById('userFormError');
+
+  let allUsers = [];
+
+  async function loadUsers() {
+    try {
+      const res = await fetch('/api/users');
+      if (!res.ok) {
+        if (res.status === 403) {
+          window.location.href = '/dashboard.html';
+          return;
+        }
+        throw new Error('Failed to fetch users');
+      }
+      allUsers = await res.json();
+      renderUsers(allUsers);
+    } catch (err) {
+      console.error('Failed to load users', err);
+      if (tableBody) {
+        tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#ef4444; padding:2rem;">Error loading users: ${escapeHtml(err.message)}</td></tr>`;
+      }
+    }
+  }
+
+  function renderUsers(users) {
+    if (!tableBody) return;
+    tableBody.innerHTML = '';
+    if (users.length === 0) {
+      tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#64748b; padding:2rem;">No users found.</td></tr>';
+      return;
+    }
+
+    users.forEach(u => {
+      const tr = document.createElement('tr');
+      const isAdmin = String(u.role).toLowerCase() === 'admin';
+      const roleBadge = isAdmin
+        ? '<span class="badge" style="background:rgba(15,108,189,0.2); color:#479ef5; border:1px solid rgba(15,108,189,0.5);">Admin</span>'
+        : '<span class="badge badge-gray">Standard</span>';
+
+      const isCurrentLoggedInUser = u.username.toLowerCase() === (user?.username || '').toLowerCase();
+      const createdAtStr = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—';
+
+      const deleteBtnDisabled = isCurrentLoggedInUser ? 'disabled title="You cannot delete your own account"' : '';
+
+      tr.innerHTML = `
+        <td style="font-weight:600; color:var(--fui-colorNeutralForeground1);">${escapeHtml(u.username)} ${isCurrentLoggedInUser ? '<span style="font-size:0.75rem; color:#479ef5; font-weight:normal;">(You)</span>' : ''}</td>
+        <td>${roleBadge}</td>
+        <td style="color:var(--fui-colorNeutralForeground3); font-size:0.85rem;">${createdAtStr}</td>
+        <td style="font-family:var(--fui-fontFamilyMonospace); font-size:0.8rem; color:var(--fui-colorNeutralForeground4);">#${u.id}</td>
+        <td style="text-align:right;">
+          <button class="btn-secondary btn-sm" onclick="editUser(${u.id})">Edit</button>
+          <button class="btn-secondary btn-sm" style="border-color: rgba(239,68,68,0.4); color: #fca5a5; margin-left: 0.35rem;" onclick="deleteUser(${u.id}, '${escapeHtml(u.username)}')" ${deleteBtnDisabled}>
+            Delete
+          </button>
+        </td>
+      `;
+      tableBody.appendChild(tr);
+    });
+  }
+
+  if (openBtn) {
+    openBtn.addEventListener('click', () => {
+      if (userFormError) userFormError.style.display = 'none';
+      if (userForm) userForm.reset();
+      if (userIdInput) userIdInput.value = '';
+      if (usernameInput) {
+        usernameInput.disabled = false;
+        usernameInput.focus();
+      }
+      if (modalTitle) modalTitle.textContent = 'Create New User';
+      if (passwordInput) passwordInput.required = true;
+      if (passwordHelp) passwordHelp.textContent = 'Minimum 4 characters recommended.';
+      if (modal) modal.classList.add('open');
+    });
+  }
+
+  if (cancelBtn && modal) {
+    cancelBtn.addEventListener('click', () => modal.classList.remove('open'));
+  }
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.classList.remove('open');
+    });
+  }
+
+  window.editUser = (id) => {
+    const target = allUsers.find(u => u.id === id);
+    if (!target) return;
+
+    if (userFormError) userFormError.style.display = 'none';
+    if (userIdInput) userIdInput.value = target.id;
+    if (usernameInput) {
+      usernameInput.value = target.username;
+      usernameInput.disabled = true;
+    }
+    if (roleSelect) roleSelect.value = String(target.role).toLowerCase() === 'admin' ? 'admin' : 'standard';
+    if (passwordInput) {
+      passwordInput.value = '';
+      passwordInput.required = false;
+    }
+    if (passwordHelp) passwordHelp.textContent = 'Leave password blank to keep current password.';
+    if (modalTitle) modalTitle.textContent = `Edit User (${target.username})`;
+    if (modal) modal.classList.add('open');
+  };
+
+  window.deleteUser = async (id, username) => {
+    if (!confirm(`Are you sure you want to permanently delete user '${username}'?`)) return;
+
+    try {
+      const res = await fetch(`/api/users/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to delete user.');
+        return;
+      }
+      await loadUsers();
+    } catch (err) {
+      alert('Network error while deleting user.');
+    }
+  };
+
+  if (userForm) {
+    userForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (userFormError) userFormError.style.display = 'none';
+
+      const id = userIdInput?.value;
+      const role = roleSelect?.value || 'standard';
+      const password = passwordInput?.value;
+
+      try {
+        if (!id) {
+          const username = usernameInput?.value.trim();
+          const res = await fetch('/api/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password, role })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            if (userFormError) {
+              userFormError.textContent = data.error || 'Failed to create user.';
+              userFormError.style.display = 'block';
+            }
+            return;
+          }
+        } else {
+          const body = { role };
+          if (password) body.password = password;
+          const res = await fetch(`/api/users/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            if (userFormError) {
+              userFormError.textContent = data.error || 'Failed to update user.';
+              userFormError.style.display = 'block';
+            }
+            return;
+          }
+        }
+
+        if (modal) modal.classList.remove('open');
+        await loadUsers();
+      } catch (err) {
+        if (userFormError) {
+          userFormError.textContent = 'Communication error with server.';
+          userFormError.style.display = 'block';
+        }
+      }
+    });
+  }
+
+  await loadUsers();
+}
+
 
