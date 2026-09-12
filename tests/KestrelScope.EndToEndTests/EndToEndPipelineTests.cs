@@ -95,14 +95,32 @@ public class EndToEndPipelineTests : IAsyncLifetime
         throw new TimeoutException($"Service at {baseUrl} failed to become healthy within {timeout.TotalSeconds}s.");
     }
 
+    private static string GetBuildConfiguration()
+    {
+        var envConfig = Environment.GetEnvironmentVariable("DOTNET_CONFIGURATION");
+        if (!string.IsNullOrWhiteSpace(envConfig))
+        {
+            return envConfig;
+        }
+
+        var pathParts = AppContext.BaseDirectory.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (pathParts.Any(p => string.Equals(p, "Release", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "Release";
+        }
+
+        return "Debug";
+    }
+
     private static Process StartServiceProcess(string projectRelPath, string bindUrl, Dictionary<string, string>? extraEnv = null)
     {
         string? repoRoot = FindRepoRoot();
         if (repoRoot == null)
             throw new DirectoryNotFoundException("Could not locate repository root containing KestrelScope.sln");
 
+        string config = GetBuildConfiguration();
         string fullProjPath = Path.Combine(repoRoot, projectRelPath);
-        var psi = new ProcessStartInfo("dotnet", $"run --project \"{fullProjPath}\" --no-build")
+        var psi = new ProcessStartInfo("dotnet", $"run --project \"{fullProjPath}\" -c {config} --no-build")
         {
             WorkingDirectory = repoRoot,
             UseShellExecute = false,

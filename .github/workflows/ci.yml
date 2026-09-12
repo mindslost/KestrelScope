@@ -35,6 +35,8 @@ jobs:
         run: dotnet build KestrelScope.sln -c Release --no-restore
 
       - name: Run End-to-End Integration Tests
+        env:
+          DOTNET_CONFIGURATION: Release
         run: |
           dotnet test tests/KestrelScope.EndToEndTests/KestrelScope.EndToEndTests.csproj \
             -c Release \
