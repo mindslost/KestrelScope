@@ -156,9 +156,7 @@ app.MapPost("/api/telemetry/flush", async () =>
 string bindUrl = Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "http://0.0.0.0:8080";
 app.Run(bindUrl);
 
-// ============================================================================
-// Telemetry Dispatcher Background Service
-// ============================================================================
+#region Telemetry Dispatcher Background Service
 public class TelemetryDispatcher : BackgroundService
 {
     private readonly string _serviceName;
@@ -371,5 +369,6 @@ public class TelemetryDispatcher : BackgroundService
         }
     }
 }
+#endregion
 
 public record OrderRequest(string CustomerId, decimal TotalAmount);

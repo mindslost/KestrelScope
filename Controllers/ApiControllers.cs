@@ -12,9 +12,7 @@ using KestrelScope.Services;
 
 namespace KestrelScope.Controllers;
 
-// ============================================================================
-// DTOs & Models
-// ============================================================================
+#region DTOs & Models
 public class UserRow
 {
     public long Id { get; set; }
@@ -63,10 +61,9 @@ public class LogRecordDto
     public string Body { get; set; } = "";
     public string? AttributesJson { get; set; }
 }
+#endregion
 
-// ============================================================================
-// Auth Controller (/api/auth)
-// ============================================================================
+#region Auth Controller (/api/auth)
 [ApiController]
 [Route("api/auth")]
 public class AuthController : ControllerBase
@@ -146,10 +143,9 @@ public class AuthController : ControllerBase
         });
     }
 }
+#endregion
 
-// ============================================================================
-// Metrics Controller (/api/metrics)
-// ============================================================================
+#region Metrics Controller (/api/metrics)
 [ApiController]
 [Route("api/metrics")]
 public class MetricsController : ControllerBase
@@ -239,10 +235,9 @@ public class MetricsController : ControllerBase
         });
     }
 }
+#endregion
 
-// ============================================================================
-// Alerts Controller (/api/alerts)
-// ============================================================================
+#region Alerts Controller (/api/alerts)
 [ApiController]
 [Route("api/alerts")]
 public class AlertsController : ControllerBase
@@ -329,10 +324,9 @@ public class AlertsController : ControllerBase
         return Ok(new { status = "deleted", id });
     }
 }
+#endregion
 
-// ============================================================================
-// Traces Controller (/api/traces)
-// ============================================================================
+#region Traces Controller (/api/traces)
 [ApiController]
 [Route("api/traces")]
 public class TracesController : ControllerBase
@@ -385,10 +379,9 @@ public class TracesController : ControllerBase
         return Ok(spans);
     }
 }
+#endregion
 
-// ============================================================================
-// Logs Controller (/api/logs)
-// ============================================================================
+#region Logs Controller (/api/logs)
 [ApiController]
 [Route("api/logs")]
 public class LogsController : ControllerBase
@@ -452,4 +445,6 @@ public class LogsController : ControllerBase
         return Ok(services);
     }
 }
+#endregion
+
 
