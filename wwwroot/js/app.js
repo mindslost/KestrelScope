@@ -750,14 +750,14 @@ async function loadLogs() {
       }
 
       tr.innerHTML = `
-        <td style="font-family:ui-monospace, monospace; font-size:0.8rem; color:#94a3b8;">${timeStr}</td>
+        <td style="font-family:ui-monospace, monospace; font-size:0.8rem; color:#94a3b8; white-space:nowrap;">${timeStr}</td>
         <td><span class="log-badge ${badgeClass}">${sev}</span></td>
-        <td><span style="font-weight:600; color:#e2e8f0;">${escapeHtml(log.serviceName)}</span></td>
+        <td style="white-space:nowrap;"><span style="font-weight:600; color:#e2e8f0;">${escapeHtml(log.serviceName)}</span></td>
         <td class="log-body-cell">
           <div>${escapeHtml(log.body)}</div>
           ${attrsHtml}
         </td>
-        <td>${traceCol}</td>
+        <td style="white-space:nowrap;">${traceCol}</td>
       `;
 
       tbody.appendChild(tr);

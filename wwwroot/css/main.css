@@ -886,6 +886,73 @@ body {
   line-height: 1.2;
 }
 
+/* Compact Logs DataGrid (reduced row height & middle aligned content) */
+.logs-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.logs-table thead th {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  vertical-align: middle;
+  height: 28px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.logs-table tbody tr {
+  min-height: 28px;
+  height: 28px;
+}
+
+.logs-table tbody td {
+  padding: 0.22rem 0.65rem;
+  vertical-align: middle;
+  line-height: 1.25;
+  font-size: 0.82rem;
+}
+
+.logs-table tbody td * {
+  vertical-align: middle;
+}
+
+.logs-table .log-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.7rem;
+  line-height: 1.1;
+  vertical-align: middle;
+}
+
+.logs-table .trace-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.45rem;
+  font-size: 0.72rem;
+  line-height: 1.1;
+  vertical-align: middle;
+}
+
+.logs-table .log-body-cell {
+  vertical-align: middle;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.logs-table .log-body-cell > div {
+  vertical-align: middle;
+}
+
+.logs-table .log-attrs-box {
+  padding: 0.25rem 0.5rem;
+  margin-top: 0.2rem;
+  font-size: 0.73rem;
+  line-height: 1.2;
+}
+
 .panel-header {
   display: flex;
   align-items: center;
