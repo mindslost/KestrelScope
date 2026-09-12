@@ -10,21 +10,36 @@
   <header class="navbar">
     <a href="/dashboard.html" class="nav-brand">
       <svg viewBox="0 0 24 24">
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+        <path d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2zm1 17.93V18a2 2 0 0 0-2-2h-1v-2h2a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1H9.83a3.001 3.001 0 0 0-2.83-2V4.07A8.006 8.006 0 0 1 19.93 11H18a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h1.93A8.01 8.01 0 0 1 13 19.93z"/>
       </svg>
       <span>KestrelScope</span>
     </a>
 
     <nav class="nav-links">
-      <a href="/dashboard.html" class="nav-link">Metrics</a>
-      <a href="/traces.html" class="nav-link active">Traces</a>
-      <a href="/logs.html" class="nav-link">Logs</a>
-      <a href="/alerts.html" class="nav-link">Alert Rules</a>
+      <a href="/dashboard.html" class="nav-link">
+        <svg viewBox="0 0 24 24"><path d="M3 3a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h18a1 1 0 1 0 0-2H4V4a1 1 0 0 0-1-1zm5 14a1 1 0 0 0 1-1v-4a1 1 0 1 0-2 0v4a1 1 0 0 0 1 1zm5 0a1 1 0 0 0 1-1V8a1 1 0 1 0-2 0v8a1 1 0 0 0 1 1zm5 0a1 1 0 0 0 1-1v-7a1 1 0 1 0-2 0v7a1 1 0 0 0 1 1z"/></svg>
+        <span>Metrics</span>
+      </a>
+      <a href="/traces.html" class="nav-link active">
+        <svg viewBox="0 0 24 24"><path d="M10 2a8 8 0 0 1 6.32 12.906l4.387 4.387a1 1 0 0 1-1.414 1.414l-4.387-4.387A8 8 0 1 1 10 2zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12zm-1 3a1 1 0 0 1 2 0v3.586l2.707 2.707a1 1 0 0 1-1.414 1.414l-3-3A1 1 0 0 1 9 11V7z"/></svg>
+        <span>Traces</span>
+      </a>
+      <a href="/logs.html" class="nav-link">
+        <svg viewBox="0 0 24 24"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H14l6 6v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 19.5v-15zM13.5 3.5V8H18l-4.5-4.5zM7 11a1 1 0 0 0 0 2h10a1 1 0 1 0 0-2H7zm0 4a1 1 0 1 0 0 2h10a1 1 0 1 0 0-2H7z"/></svg>
+        <span>Logs</span>
+      </a>
+      <a href="/alerts.html" class="nav-link">
+        <svg viewBox="0 0 24 24"><path d="M12 2c.7 0 1.34.37 1.69.97l8.03 13.91A1.96 1.96 0 0 1 20.02 20H3.98a1.96 1.96 0 0 1-1.7-2.92l8.03-13.91A1.95 1.95 0 0 1 12 2zm0 13a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm0-7a1 1 0 0 0-1 1v4a1 1 0 1 0 2 0V9a1 1 0 0 0-1-1z"/></svg>
+        <span>Alert Rules</span>
+      </a>
     </nav>
 
     <div class="nav-user">
       <div id="userAvatar" class="user-avatar">AD</div>
-      <button class="btn-logout" onclick="handleLogout()">Sign Out</button>
+      <button class="btn-logout" onclick="handleLogout()">
+        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:currentColor;"><path d="M5 3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7a1 1 0 1 0 0-2H5V5h7a1 1 0 1 0 0-2H5zm12.293 4.293a1 1 0 0 1 1.414 0l4 4a1 1 0 0 1 0 1.414l-4 4a1 1 0 0 1-1.414-1.414L18.586 13H10a1 1 0 1 1 0-2h8.586l-1.293-1.293a1 1 0 0 1 0-1.414z"/></svg>
+        <span>Sign Out</span>
+      </button>
     </div>
   </header>
 
@@ -53,7 +68,7 @@
             </thead>
             <tbody id="traceTableBody">
               <tr>
-                <td colspan="5" style="text-align:center; color:#64748b; padding:2rem;">
+                <td colspan="5" style="text-align:center; color:var(--fui-colorNeutralForeground4); padding:2rem;">
                   Loading traces...
                 </td>
               </tr>
@@ -79,7 +94,7 @@
         </div>
 
         <div id="timelineSpans" class="timeline-spans">
-          <div style="color:#64748b; padding:1.5rem; text-align:center;">
+          <div style="color:var(--fui-colorNeutralForeground4); padding:1.5rem; text-align:center;">
             Select a trace from the left panel to inspect its execution hierarchy.
           </div>
         </div>
@@ -93,4 +108,3 @@
   </script>
 </body>
 </html>
-

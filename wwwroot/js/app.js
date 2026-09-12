@@ -214,8 +214,8 @@ async function initDashboard() {
 
     const ctx = canvas.getContext('2d');
     const gradient = ctx.createLinearGradient(0, 0, 0, 350);
-    gradient.addColorStop(0, 'rgba(56, 189, 248, 0.35)');
-    gradient.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+    gradient.addColorStop(0, 'rgba(40, 134, 222, 0.32)');
+    gradient.addColorStop(1, 'rgba(40, 134, 222, 0.0)');
 
     if (metricsChart) {
       metricsChart.data.labels = labels;
@@ -232,17 +232,17 @@ async function initDashboard() {
         datasets: [{
           label: metricName,
           data: values,
-          borderColor: '#38bdf8',
-          borderWidth: 2.5,
+          borderColor: '#2886de',
+          borderWidth: 2,
           backgroundColor: gradient,
           fill: true,
-          tension: 0.4,
-          pointBackgroundColor: '#38bdf8',
-          pointBorderColor: '#0a0e17',
+          tension: 0.35,
+          pointBackgroundColor: '#2886de',
+          pointBorderColor: '#141414',
           pointBorderWidth: 2,
           pointRadius: 4,
           pointHoverRadius: 6,
-          pointHoverBackgroundColor: '#7dd3fc'
+          pointHoverBackgroundColor: '#479ef5'
         }]
       },
       options: {
@@ -251,13 +251,20 @@ async function initDashboard() {
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: '#131b2e',
-            titleColor: '#f1f5f9',
-            bodyColor: '#38bdf8',
-            borderColor: '#212e4a',
+            backgroundColor: '#242424',
+            titleColor: '#ffffff',
+            bodyColor: '#479ef5',
+            borderColor: 'rgba(255, 255, 255, 0.12)',
             borderWidth: 1,
             padding: 10,
             displayColors: false,
+            titleFont: {
+              family: "'Segoe UI Variable Text', 'Segoe UI', -apple-system, sans-serif",
+              weight: '600'
+            },
+            bodyFont: {
+              family: "'Segoe UI Variable Text', 'Segoe UI', -apple-system, sans-serif"
+            },
             callbacks: {
               label: function(item) {
                 const val = typeof item.raw === 'number' ? item.raw.toFixed(2) : item.raw;
@@ -268,16 +275,25 @@ async function initDashboard() {
         },
         scales: {
           x: {
-            grid: { color: 'rgba(33, 46, 74, 0.5)' },
+            grid: { color: 'rgba(255, 255, 255, 0.06)' },
             ticks: {
-              color: '#94a3b8',
-              font: { size: 11 },
+              color: '#9e9e9e',
+              font: {
+                family: "'Segoe UI Variable Text', 'Segoe UI', -apple-system, sans-serif",
+                size: 11
+              },
               maxTicksLimit: 10
             }
           },
           y: {
-            grid: { color: 'rgba(33, 46, 74, 0.5)' },
-            ticks: { color: '#94a3b8', font: { size: 11 } },
+            grid: { color: 'rgba(255, 255, 255, 0.06)' },
+            ticks: {
+              color: '#9e9e9e',
+              font: {
+                family: "'Segoe UI Variable Text', 'Segoe UI', -apple-system, sans-serif",
+                size: 11
+              }
+            },
             beginAtZero: true
           }
         }

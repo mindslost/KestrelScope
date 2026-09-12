@@ -10,59 +10,80 @@
   <header class="navbar">
     <a href="/dashboard.html" class="nav-brand">
       <svg viewBox="0 0 24 24">
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+        <path d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2zm1 17.93V18a2 2 0 0 0-2-2h-1v-2h2a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1H9.83a3.001 3.001 0 0 0-2.83-2V4.07A8.006 8.006 0 0 1 19.93 11H18a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h1.93A8.01 8.01 0 0 1 13 19.93z"/>
       </svg>
       <span>KestrelScope</span>
     </a>
 
     <nav class="nav-links">
-      <a href="/dashboard.html" class="nav-link">Metrics</a>
-      <a href="/traces.html" class="nav-link">Traces</a>
-      <a href="/logs.html" class="nav-link">Logs</a>
-      <a href="/alerts.html" class="nav-link active">Alert Rules</a>
+      <a href="/dashboard.html" class="nav-link">
+        <svg viewBox="0 0 24 24"><path d="M3 3a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h18a1 1 0 1 0 0-2H4V4a1 1 0 0 0-1-1zm5 14a1 1 0 0 0 1-1v-4a1 1 0 1 0-2 0v4a1 1 0 0 0 1 1zm5 0a1 1 0 0 0 1-1V8a1 1 0 1 0-2 0v8a1 1 0 0 0 1 1zm5 0a1 1 0 0 0 1-1v-7a1 1 0 1 0-2 0v7a1 1 0 0 0 1 1z"/></svg>
+        <span>Metrics</span>
+      </a>
+      <a href="/traces.html" class="nav-link">
+        <svg viewBox="0 0 24 24"><path d="M10 2a8 8 0 0 1 6.32 12.906l4.387 4.387a1 1 0 0 1-1.414 1.414l-4.387-4.387A8 8 0 1 1 10 2zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12zm-1 3a1 1 0 0 1 2 0v3.586l2.707 2.707a1 1 0 0 1-1.414 1.414l-3-3A1 1 0 0 1 9 11V7z"/></svg>
+        <span>Traces</span>
+      </a>
+      <a href="/logs.html" class="nav-link">
+        <svg viewBox="0 0 24 24"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H14l6 6v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 19.5v-15zM13.5 3.5V8H18l-4.5-4.5zM7 11a1 1 0 0 0 0 2h10a1 1 0 1 0 0-2H7zm0 4a1 1 0 1 0 0 2h10a1 1 0 1 0 0-2H7z"/></svg>
+        <span>Logs</span>
+      </a>
+      <a href="/alerts.html" class="nav-link active">
+        <svg viewBox="0 0 24 24"><path d="M12 2c.7 0 1.34.37 1.69.97l8.03 13.91A1.96 1.96 0 0 1 20.02 20H3.98a1.96 1.96 0 0 1-1.7-2.92l8.03-13.91A1.95 1.95 0 0 1 12 2zm0 13a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm0-7a1 1 0 0 0-1 1v4a1 1 0 1 0 2 0V9a1 1 0 0 0-1-1z"/></svg>
+        <span>Alert Rules</span>
+      </a>
     </nav>
 
     <div class="nav-user">
       <div id="userAvatar" class="user-avatar">AD</div>
-      <button class="btn-logout" onclick="handleLogout()">Sign Out</button>
+      <button class="btn-logout" onclick="handleLogout()">
+        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:currentColor;"><path d="M5 3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7a1 1 0 1 0 0-2H5V5h7a1 1 0 1 0 0-2H5zm12.293 4.293a1 1 0 0 1 1.414 0l4 4a1 1 0 0 1 0 1.414l-4 4a1 1 0 0 1-1.414-1.414L18.586 13H10a1 1 0 1 1 0-2h8.586l-1.293-1.293a1 1 0 0 1 0-1.414z"/></svg>
+        <span>Sign Out</span>
+      </button>
     </div>
   </header>
 
   <main class="main-container">
     <div class="alert-header">
-      <h2 class="panel-title" style="font-size:1.5rem;">Alert Rules</h2>
-      <button id="btnNewAlert" class="btn-primary">+ New Alert</button>
+      <div>
+        <h1 class="page-title">Alert Rules</h1>
+        <p class="page-subtitle">Define automated threshold evaluations and webhook dispatchers</p>
+      </div>
+      <button id="btnNewAlert" class="btn-primary">
+        <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;"><path d="M12 4a1 1 0 0 1 1 1v6h6a1 1 0 1 1 0 2h-6v6a1 1 0 1 1-2 0v-6H5a1 1 0 1 1 0-2h6V5a1 1 0 0 1 1-1z"/></svg>
+        <span>New Alert Rule</span>
+      </button>
     </div>
 
     <!-- Alert Cards Grid -->
     <div id="alertGrid" class="alert-grid">
-      <div style="color:#64748b; padding:2rem;">Loading alert rules...</div>
+      <div style="color:var(--fui-colorNeutralForeground4); padding:2rem;">Loading alert rules...</div>
     </div>
   </main>
 
   <!-- Modal: Assign New Metric Alert -->
   <div id="alertModal" class="modal-overlay">
     <div class="modal-content">
-      <h3 class="modal-title">Assign New Metric Alert</h3>
+      <h3 class="modal-title">Configure Metric Alert Rule</h3>
       <form id="alertForm" class="modal-form">
         <div>
           <label class="filter-label">Rule Name</label>
-          <input type="text" id="ruleName" class="filter-input" style="width:100%; margin-top:0.3rem;" placeholder="e.g. High Request Duration Alert" required>
+          <input type="text" id="ruleName" class="filter-input" style="width:100%; margin-top:0.35rem;" placeholder="e.g. High Request Duration Alert" required>
         </div>
 
         <div>
           <label class="filter-label">Metric Name</label>
-          <input type="text" id="metricName" class="filter-input" style="width:100%; margin-top:0.3rem;" placeholder="e.g. http.server.duration" required>
+          <input type="text" id="metricName" class="filter-input" style="width:100%; margin-top:0.35rem;" placeholder="e.g. http.server.duration" required>
         </div>
 
         <div>
           <label class="filter-label">Threshold Condition (Breach if Avg &gt; Threshold)</label>
-          <input type="number" step="any" id="threshold" class="filter-input" style="width:100%; margin-top:0.3rem;" placeholder="e.g. 500" required>
+          <input type="number" step="any" id="threshold" class="filter-input" style="width:100%; margin-top:0.35rem;" placeholder="e.g. 500" required>
         </div>
 
         <div>
-          <label class="filter-label">Evaluation Window (Minutes)</label>
-          <select id="windowMinutes" class="filter-select" style="width:100%; margin-top:0.3rem;">
+          <label class="filter-label">Evaluation Window</label>
+          <select id="windowMinutes" class="filter-select" style="width:100%; margin-top:0.35rem;">
             <option value="1">1 Minute</option>
             <option value="5" selected>5 Minutes</option>
             <option value="15">15 Minutes</option>
@@ -72,12 +93,12 @@
 
         <div>
           <label class="filter-label">Notification Webhook URL</label>
-          <input type="url" id="webhookUrl" class="filter-input" style="width:100%; margin-top:0.3rem;" placeholder="http://internal-webhook/alert" required>
+          <input type="url" id="webhookUrl" class="filter-input" style="width:100%; margin-top:0.35rem;" placeholder="http://internal-webhook/alert" required>
         </div>
 
         <div class="modal-actions">
           <button type="button" id="btnCancelModal" class="btn-secondary">Cancel</button>
-          <button type="submit" class="btn-primary">Create Alert</button>
+          <button type="submit" class="btn-primary">Create Rule</button>
         </div>
       </form>
     </div>
@@ -89,4 +110,3 @@
   </script>
 </body>
 </html>
-
