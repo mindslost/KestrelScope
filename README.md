@@ -1,5 +1,6 @@
 # KestrelScope — Self-Hosted .NET Observability Monolith
 
+[![CI](https://github.com/mindslost/KestrelScope/actions/workflows/ci.yml/badge.svg)](https://github.com/mindslost/KestrelScope/actions/workflows/ci.yml)
 [![.NET 9](https://img.shields.io/badge/.NET-9.0-512bd4.svg)](https://dotnet.microsoft.com/download/dotnet/9.0)
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-OTLP%201.0-4a154b.svg)](https://opentelemetry.io/)
 [![Design System](https://img.shields.io/badge/Design%20System-Microsoft%20Fluent%202-0f6cbd.svg)](https://fluent2.microsoft.design/)
