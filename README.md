@@ -1,72 +1,141 @@
 # KestrelScope — Self-Hosted .NET Observability Monolith
 
-## Project Overview
-KestrelScope is a 100% sovereign, self-hosted, single-binary observability service built with .NET 8/9 and SQLite. It provides native OpenTelemetry (OTLP) metrics and trace ingestion, an embedded relational metastore, a background alert evaluation engine, and a web dashboard for monitoring microservice health.
+[![.NET 9](https://img.shields.io/badge/.NET-9.0-512bd4.svg)](https://dotnet.microsoft.com/download/dotnet/9.0)
+[![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-OTLP%201.0-4a154b.svg)](https://opentelemetry.io/)
+[![Design System](https://img.shields.io/badge/Design%20System-Microsoft%20Fluent%202-0f6cbd.svg)](https://fluent2.microsoft.design/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+KestrelScope is a **100% sovereign, self-hosted, single-binary observability monolith** engineered in .NET 9 and SQLite. It provides native OpenTelemetry (OTLP) ingestion for **Metrics**, **Distributed Traces**, and **Structured Logs** with bidirectional trace correlation, an embedded relational metastore, a background alert evaluation engine, and a modern web dashboard built on the **Microsoft Fluent 2 Design System**.
+
+---
+
+## 📖 User Documentation
+For detailed setup guides, Docker deployment, and code integration examples across **.NET**, **Node.js**, **Python**, **OTel Collector**, and **cURL**, see:
+👉 [**User Guide: Setup & Service Integration (Documentation/User_Guide_Setup_and_Integration.md)**](Documentation/User_Guide_Setup_and_Integration.md)
+
+---
 
 ## Architectural Mandates
-1. **Single-Binary Monolith**: Runs as a single process containing web API endpoints, static UI assets (`wwwroot`), database engine, and background workers. No external container dependencies (no ClickHouse, PostgreSQL, or Redis) and no SaaS vendors.
-2. **Air-Gapped Operation**: All static frontend assets (HTML, CSS, JS, Chart.js) are hosted locally within `wwwroot/`. No external CDN calls or internet access required.
-3. **High-Concurrency Persistence**: Uses SQLite in Write-Ahead Logging (WAL) mode (`PRAGMA journal_mode=WAL;`) for concurrent read/write throughput without database lock contention.
-4. **Standard OTLP Receivers**: Exposes standard OpenTelemetry ingestion endpoints at `/v1/metrics` and `/v1/traces`.
+1. **Single-Binary Monolith**: Runs as a single process containing web API endpoints, static UI assets (`wwwroot`), database engine, and background workers. No external database dependencies (no ClickHouse, PostgreSQL, or Redis) and zero SaaS vendor locks.
+2. **Air-Gapped Operation**: 100% sovereign. All static frontend assets (HTML, Fluent CSS tokens, JS, Chart.js, embedded SVG Fluent System Icons) are served locally from `wwwroot/`. Zero external CDN calls or external font downloads required.
+3. **High-Concurrency Persistence**: Uses SQLite in Write-Ahead Logging (WAL) mode (`PRAGMA journal_mode=WAL;`) with Dapper for high-throughput, concurrent, lock-free read/write ingestion.
+4. **Three Pillars of Observability**: Ingests standard OpenTelemetry payloads over HTTP:
+   - `POST /v1/metrics` — Gauges, counters, and performance series
+   - `POST /v1/traces` — Distributed traces and hierarchical span waterfall
+   - `POST /v1/logs` — Structured logs with bidirectional trace correlation
+5. **Fluent 2 User Experience**: Modern Microsoft Fluent 2 dark theme interface featuring Acrylic/Mica surfaces, depth shadows, CommandBar navigation, compact DataGrids, and status pill badges.
+
+---
+
+## Quickstart & Build
+
+### 1. Run on Host (.NET 9)
+```bash
+# Build the solution
+dotnet build
+
+# Run KestrelScope on port 5000
+dotnet run --urls "http://0.0.0.0:5000"
+```
+
+### 2. Run via Docker Compose
+```bash
+# Start KestrelScope in background
+docker compose up -d kestrelscope
+```
+
+### 3. Verify Health & Open Dashboard
+- **Health Check**: `curl -s http://localhost:5000/health`
+- **Web Console**: Open [http://localhost:5000](http://localhost:5000) in your browser
+  - **Default Username**: `admin`
+  - **Default Password**: `admin123`
+
+---
+
+## Quick Integration (Send Telemetry to KestrelScope)
+
+Set standard OpenTelemetry environment variables in any microservice:
+
+```bash
+export OTEL_SERVICE_NAME="my-service"
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:5000"
+export OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf" # or http/json
+```
+
+### Ingesting via cURL
+```bash
+# Ingest Log Record with Trace Correlation
+curl -X POST http://localhost:5000/v1/logs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resourceLogs": [{
+      "resource": { "attributes": [{ "key": "service.name", "value": { "stringValue": "payment-api" } }] },
+      "scopeLogs": [{
+        "logRecords": [{
+          "timeUnixNano": "'$(date +%s%N)'",
+          "severityText": "INFO",
+          "severityNumber": 9,
+          "body": { "stringValue": "Payment processed successfully" },
+          "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+          "spanId": "00f067aa0ba902b7"
+        }]
+      }]
+    }]
+  }'
+```
+
+---
+
+## Web Console Features
+
+| View | Path | Description |
+| :--- | :--- | :--- |
+| **Landing Portal** | `/` | Fluent 2 Acrylic launcher with live operational health badge |
+| **Metrics Explorer** | `/dashboard.html` | Live KPI cards, service & metric filters, segmented time windows, and Chart.js telemetry graphs |
+| **Traces Explorer** | `/traces.html` | Master-detail split view with compact DataGrid, execution waterfalls, and correlated log links |
+| **Logs Explorer** | `/logs.html` | Structured log feed, severity filters, live text search, and clickable trace correlation pills |
+| **Alert Rules** | `/alerts.html` | Threshold alert rule manager with automated background worker evaluation and webhook dispatchers |
+
+---
+
+## Automated Tests
+
+Run the complete integration test suite exercising end-to-end metrics, traces, structured logs, and alert triggers:
+
+```bash
+# Run tests on host
+dotnet test tests/KestrelScope.EndToEndTests
+
+# Run tests in Docker CE container
+./scripts/run-e2e.sh
+```
+
+---
 
 ## Repository Directory Structure
 ```
-├── Program.cs                      # Application entry point & service bootstrap
-├── DbInitializer.cs                # SQLite schema initializer & WAL configuration
 ├── Controllers/
-│   ├── OtlpIngestionController.cs  # Ingests OTLP metric and trace JSON payloads
-│   └── ApiControllers.cs           # Web UI REST APIs (/api/auth, /api/metrics, /api/alerts)
+│   ├── OtlpIngestionController.cs  # Ingests standard OTLP metrics, traces, and logs
+│   └── ApiControllers.cs           # Web UI REST APIs (/api/auth, /api/metrics, /api/logs, /api/alerts)
 ├── Services/
-│   └── AlertRulerWorker.cs         # BackgroundService evaluating metric alerts every 60s
-├── Tools/
-│   └── SyntheticTelemetryGenerator.cs # Test utility emitting sample OTLP data
-└── wwwroot/                        # Embedded web UI static assets
-    ├── index.html                  # Public landing / platform status
-    ├── login.html                  # Auth page
-    ├── dashboard.html              # Metrics explorer with Chart.js
-    ├── traces.html                 # Distributed trace viewer
-    ├── alerts.html                 # Alert rule assignment UI
-    ├── css/main.css                # Dark-mode dashboard stylesheet
-    └── js/
-        ├── chart.min.js            # Locally hosted Chart.js library
-        └── app.js                  # API client & UI event handlers
+│   └── AlertRulerWorker.cs         # Background evaluation worker dispatching webhooks
+├── Documentation/
+│   ├── User_Guide_Setup_and_Integration.md # Complete user setup and integration guide
+│   └── Observability_Roadmap_and_Architecture_Plan.md # Architecture roadmap
+├── tests/
+│   ├── SampleOrderService/         # Reference microservice emitting OTel telemetry
+│   └── KestrelScope.EndToEndTests/ # xUnit automated end-to-end test suite
+├── wwwroot/                        # Sovereign, air-gapped Fluent 2 web UI assets
+│   ├── index.html                  # Landing page
+│   ├── login.html                  # Auth page
+│   ├── dashboard.html              # Metrics explorer
+│   ├── traces.html                 # Traces explorer
+│   ├── logs.html                   # Logs explorer
+│   ├── alerts.html                 # Alert rules manager
+│   ├── css/main.css                # Microsoft Fluent 2 Dark Theme stylesheet
+│   └── js/app.js                   # Client application controller
+├── DbInitializer.cs                # SQLite schema initializer & WAL configuration
+├── Dockerfile                      # Production container definition
+├── docker-compose.yml              # Local container orchestration
+└── Program.cs                      # Application entry point
 ```
-
-## Quickstart & Build
-```bash
-# Build the project
-dotnet build
-
-# Run KestrelScope
-dotnet run
-```
-The platform listens on `http://0.0.0.0:5000`.
-
-## Implementation Status
-- [x] **Phase 1: Solution Setup & Database Initialization**
-  - [x] Create ASP.NET Core Web API project (.NET 9).
-  - [x] Add NuGet packages: Microsoft.Data.Sqlite, Dapper.
-  - [x] Implement `DbInitializer.cs` with `PRAGMA journal_mode=WAL;` and schema creation script.
-  - [x] Verify database initialization creates `observability.db` on launch.
-- [x] **Phase 2: OTLP Ingestion Controller**
-  - [x] Implement `OtlpIngestionController.cs` with routes `/v1/metrics` and `/v1/traces`.
-  - [x] Add JSON parsing logic for OTLP `resourceMetrics`, `resourceSpans`, and `service.name` attributes.
-  - [x] Implement SQLite transaction batching for fast sample insertion.
-  - [x] Implement `SyntheticTelemetryGenerator.cs` and verify ingestion end-to-end.
-- [x] **Phase 3: Background Alert Engine**
-  - [x] Create `AlertRulerWorker.cs` extending `BackgroundService`.
-  - [x] Configure 60-second evaluation loop inside `ExecuteAsync`.
-  - [x] Implement SQL aggregate threshold calculation query over `MetricSamples`.
-  - [x] Implement alert state management to suppress notification fatigue.
-  - [x] Implement resilient `HttpClient` webhook POST dispatching with 5-second timeouts on breaches and resolutions.
-- [x] **Phase 4: Authentication & Static Web Pipeline**
-  - [x] Enable static file middleware (`app.UseStaticFiles()`) mapping to `wwwroot/`.
-  - [x] Implement Cookie Authentication middleware (`CookieAuth`, `ObsSession`).
-  - [x] Build `/api/auth/login`, `/api/auth/logout`, and `/api/auth/me` API endpoints with PBKDF2 hashing.
-  - [x] Build `/api/metrics/*` (services, names, series, stats), `/api/alerts/*` (CRUD, toggle), and `/api/traces` query REST endpoints.
-- [x] **Phase 5: Web UI Development & Integration Testing**
-  - [x] Embed local `chart.min.js` into `wwwroot/js/chart.min.js` (100% air-gapped).
-  - [x] Implement dark-mode CSS in `wwwroot/css/main.css` matching provided design mockups.
-  - [x] Build `index.html`, `login.html`, `dashboard.html`, `traces.html`, and `alerts.html`.
-  - [x] Implement `app.js` managing session authentication, metrics live charts, hierarchical trace waterfall timelines, and alert rules management.
-  - [x] Execute end-to-end integration tests verifying telemetry ingestion, alert evaluation, and UI asset serving.
