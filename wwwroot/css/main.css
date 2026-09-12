@@ -831,6 +831,61 @@ body {
   box-shadow: var(--fui-shadow4);
 }
 
+/* Compact Trace List DataGrid (reduced row height & middle aligned content) */
+.traces-split-container .trace-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.traces-split-container .trace-table thead th {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  vertical-align: middle;
+  height: 28px;
+  line-height: 1;
+}
+
+.traces-split-container .trace-table tbody tr {
+  height: 28px;
+  max-height: 28px;
+}
+
+.traces-split-container .trace-table tbody td {
+  padding: 0.2rem 0.65rem;
+  vertical-align: middle;
+  line-height: 1.2;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.traces-split-container .trace-table tbody td * {
+  vertical-align: middle;
+}
+
+.traces-split-container .trace-table .badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.7rem;
+  line-height: 1.1;
+  vertical-align: middle;
+}
+
+.traces-split-container .trace-table .trace-id-link {
+  display: inline-block;
+  vertical-align: middle;
+  line-height: 1.2;
+}
+
+.traces-split-container .trace-table strong {
+  display: inline-block;
+  vertical-align: middle;
+  line-height: 1.2;
+}
+
 .panel-header {
   display: flex;
   align-items: center;
