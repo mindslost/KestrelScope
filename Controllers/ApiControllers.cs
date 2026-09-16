@@ -8,73 +8,10 @@ using System;
 using System.Collections.Generic;
 using System.Security.Claims;
 using System.Threading.Tasks;
+using KestrelScope.Models;
 using KestrelScope.Services;
 
 namespace KestrelScope.Controllers;
-
-#region DTOs & Models
-public class UserRow
-{
-    public long Id { get; set; }
-    public string Username { get; set; } = "";
-    public string PasswordHash { get; set; } = "";
-    public string Role { get; set; } = "standard";
-    public string? CreatedAt { get; set; }
-}
-
-public class UserDto
-{
-    public long Id { get; set; }
-    public string Username { get; set; } = "";
-    public string Role { get; set; } = "standard";
-    public string? CreatedAt { get; set; }
-}
-
-public record CreateUserRequest(string Username, string Password, string Role);
-public record UpdateUserRequest(string? Role, string? Password);
-
-public class AlertRuleDto
-{
-    public long? Id { get; set; }
-    public string Name { get; set; } = "";
-    public string MetricName { get; set; } = "";
-    public double Threshold { get; set; }
-    public int WindowMinutes { get; set; }
-    public string WebhookUrl { get; set; } = "";
-    public int? IsEnabled { get; set; } = 1;
-}
-
-public class MetricPoint
-{
-    public string Timestamp { get; set; } = "";
-    public double Value { get; set; }
-}
-
-public class TraceSpanDto
-{
-    public string TraceId { get; set; } = "";
-    public string SpanId { get; set; } = "";
-    public string? ParentSpanId { get; set; }
-    public string ServiceName { get; set; } = "";
-    public string SpanName { get; set; } = "";
-    public double DurationMs { get; set; }
-    public string StatusCode { get; set; } = "";
-    public string Timestamp { get; set; } = "";
-}
-
-public class LogRecordDto
-{
-    public long Id { get; set; }
-    public string Timestamp { get; set; } = "";
-    public string? TraceId { get; set; }
-    public string? SpanId { get; set; }
-    public string ServiceName { get; set; } = "";
-    public string SeverityText { get; set; } = "";
-    public int SeverityNumber { get; set; }
-    public string Body { get; set; } = "";
-    public string? AttributesJson { get; set; }
-}
-#endregion
 
 #region Auth Controller (/api/auth)
 [ApiController]
@@ -87,8 +24,6 @@ public class AuthController : ControllerBase
     {
         _dbConn = config.GetConnectionString("DefaultConnection") ?? "Data Source=observability.db;";
     }
-
-    public record LoginRequest(string Username, string Password);
 
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest req)

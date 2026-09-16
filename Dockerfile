@@ -8,6 +8,7 @@ RUN dotnet restore KestrelScope.csproj
 
 # Copy application source code and web assets
 COPY Controllers/ ./Controllers/
+COPY Models/ ./Models/
 COPY Services/ ./Services/
 COPY Tools/ ./Tools/
 COPY DbInitializer.cs Program.cs appsettings.json ./
