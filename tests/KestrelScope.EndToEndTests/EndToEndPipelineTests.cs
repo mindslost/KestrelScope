@@ -462,4 +462,68 @@ public class EndToEndPipelineTests : IAsyncLifetime
         using var afterDoc = await JsonDocument.ParseAsync(await usersAfterDelete.Content.ReadAsStreamAsync());
         Assert.DoesNotContain(afterDoc.RootElement.EnumerateArray(), u => u.GetProperty("id").GetInt64() == createdId);
     }
+
+    [Fact]
+    public async Task Test6_MultiService_TopologyAndFlowMap()
+    {
+        var client = await CreateAuthenticatedClientAsync("admin", "admin");
+
+        // 1. Fetch Topology Flow Map
+        var flowMapRes = await client.GetAsync($"{_kestrelScopeUrl}/api/topology/flow-map?minutes=60&application=ECommerce");
+        Assert.Equal(HttpStatusCode.OK, flowMapRes.StatusCode);
+
+        using var doc = await JsonDocument.ParseAsync(await flowMapRes.Content.ReadAsStreamAsync());
+        var root = doc.RootElement;
+
+        // 2. Validate Nodes
+        Assert.True(root.TryGetProperty("nodes", out var nodesEl));
+        var nodes = nodesEl.EnumerateArray().ToList();
+        Assert.NotEmpty(nodes);
+
+        var nodeIds = nodes.Select(n => n.GetProperty("id").GetString()).ToList();
+        Assert.Contains("Web-Tier-Services", nodeIds);
+        Assert.Contains("ECommerce-Services", nodeIds);
+        Assert.Contains("Inventory-Services", nodeIds);
+        Assert.Contains("Address-Services", nodeIds);
+        Assert.Contains("Order-Processing-Services", nodeIds);
+        Assert.Contains("Customer-Survey-Services", nodeIds);
+        Assert.Contains("INVENTORY-MySQL", nodeIds);
+        Assert.Contains("Oracle DB Production", nodeIds);
+        Assert.Contains("ActiveMQ-OrderQueue", nodeIds);
+
+        // Check health and node count properties on a service node
+        var ecomNode = nodes.First(n => n.GetProperty("id").GetString() == "ECommerce-Services");
+        Assert.Equal("service", ecomNode.GetProperty("type").GetString());
+        Assert.Equal(3, ecomNode.GetProperty("nodeCount").GetInt32());
+        Assert.False(string.IsNullOrWhiteSpace(ecomNode.GetProperty("health").GetString()));
+
+        // 3. Validate Edges
+        Assert.True(root.TryGetProperty("edges", out var edgesEl));
+        var edges = edgesEl.EnumerateArray().ToList();
+        Assert.NotEmpty(edges);
+
+        var webToEcom = edges.FirstOrDefault(e => e.GetProperty("source").GetString() == "Web-Tier-Services" && e.GetProperty("target").GetString() == "ECommerce-Services");
+        Assert.True(webToEcom.ValueKind != JsonValueKind.Undefined, "Edge Web-Tier-Services -> ECommerce-Services must exist");
+        Assert.Equal("HTTP", webToEcom.GetProperty("protocol").GetString());
+
+        // 4. Validate Scorecard
+        Assert.True(root.TryGetProperty("scorecard", out var scorecardEl));
+        Assert.True(scorecardEl.GetProperty("normalPercent").GetDouble() > 0);
+        Assert.True(scorecardEl.GetProperty("callsPerMin").GetDouble() > 0);
+        Assert.True(scorecardEl.GetProperty("nodesNormal").GetInt32() > 0);
+
+        // 5. Validate TimeSeries Points for bottom ribbon
+        Assert.True(root.TryGetProperty("timeSeries", out var tsEl));
+        var points = tsEl.EnumerateArray().ToList();
+        Assert.NotEmpty(points);
+        Assert.True(points[0].GetProperty("callsPerMin").GetDouble() > 0);
+
+        // 6. Test Node Details Endpoint
+        var nodeDetailsRes = await client.GetAsync($"{_kestrelScopeUrl}/api/topology/nodes/ECommerce-Services?minutes=60");
+        Assert.Equal(HttpStatusCode.OK, nodeDetailsRes.StatusCode);
+        using var detailsDoc = await JsonDocument.ParseAsync(await nodeDetailsRes.Content.ReadAsStreamAsync());
+        Assert.Equal("ECommerce-Services", detailsDoc.RootElement.GetProperty("nodeId").GetString());
+        Assert.True(detailsDoc.RootElement.TryGetProperty("recentTraces", out _));
+        Assert.True(detailsDoc.RootElement.TryGetProperty("recentLogs", out _));
+    }
 }

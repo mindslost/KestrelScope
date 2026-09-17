@@ -207,8 +207,40 @@ public static class DbInitializer
                     insertSampleCmd.ExecuteNonQuery();
                 }
 
+                // Multi-service metrics for topology nodes
+                var otherServices = new (string Name, double LatencyBase, double MemoryBase)[]
+                {
+                    (TelemetryConstants.ServiceNames.ECommerceServices, 42.0, 512.0),
+                    (TelemetryConstants.ServiceNames.InventoryServices, 18.0, 256.0),
+                    (TelemetryConstants.ServiceNames.AddressServices, 28.0, 192.0),
+                    (TelemetryConstants.ServiceNames.WebTierServices, 95.0, 384.0),
+                    (TelemetryConstants.ServiceNames.OrderProcessingServices, 85.0, 320.0),
+                    (TelemetryConstants.ServiceNames.CustomerSurveyServices, 120.0, 160.0)
+                };
+
+                foreach (var svc in otherServices)
+                {
+                    pService.Value = svc.Name;
+                    foreach (int off in minuteOffsets)
+                    {
+                        var sampleTime = now.AddMinutes(-off).ToString("o");
+                        double lat = svc.LatencyBase + 10 * Math.Sin(off / 20.0) + rand.NextDouble() * 5;
+                        double mem = svc.MemoryBase + 20 * Math.Cos(off / 40.0) + rand.NextDouble() * 10;
+
+                        pMetric.Value = TelemetryConstants.MetricNames.HttpServerRequestDuration;
+                        pVal.Value = Math.Round(lat, 2);
+                        pTime.Value = sampleTime;
+                        insertSampleCmd.ExecuteNonQuery();
+
+                        pMetric.Value = TelemetryConstants.MetricNames.ProcessMemoryUsage;
+                        pVal.Value = Math.Round(mem, 2);
+                        pTime.Value = sampleTime;
+                        insertSampleCmd.ExecuteNonQuery();
+                    }
+                }
+
                 trans.Commit();
-                Console.WriteLine($"[KestrelScope] Seeded baseline telemetry samples spanning 24 hours for '{TelemetryConstants.ServiceNames.DefaultOrderService}'.");
+                Console.WriteLine($"[KestrelScope] Seeded baseline telemetry samples spanning 24 hours across multi-service topology.");
             }
         }
 
@@ -270,8 +302,58 @@ public static class DbInitializer
                     insertTraceCmd.ExecuteNonQuery();
                 }
 
+                // Multi-service distributed trace journeys
+                int[] multiTraceOffsets = [25, 18, 12, 6, 2];
+                foreach (int off in multiTraceOffsets)
+                {
+                    string tId = Guid.NewGuid().ToString("N");
+                    string webId = Guid.NewGuid().ToString("N")[..16];
+                    string ecomId = Guid.NewGuid().ToString("N")[..16];
+                    string invId = Guid.NewGuid().ToString("N")[..16];
+                    string addrId = Guid.NewGuid().ToString("N")[..16];
+                    string orderProcId = Guid.NewGuid().ToString("N")[..16];
+                    string surveyId = Guid.NewGuid().ToString("N")[..16];
+                    string time = now.AddMinutes(-off).ToString("o");
+
+                    // 1. Web Tier (Root)
+                    pTrace.Value = tId; pSpan.Value = webId; pParent.Value = DBNull.Value;
+                    pService.Value = TelemetryConstants.ServiceNames.WebTierServices; pName.Value = "GET /checkout";
+                    pDuration.Value = 95.0; pStatus.Value = okStatusCode; pTime.Value = time;
+                    insertTraceCmd.ExecuteNonQuery();
+
+                    // 2. ECommerce Services (Child of Web Tier)
+                    pSpan.Value = ecomId; pParent.Value = webId;
+                    pService.Value = TelemetryConstants.ServiceNames.ECommerceServices; pName.Value = "POST /api/cart/process";
+                    pDuration.Value = 42.0; pStatus.Value = okStatusCode;
+                    insertTraceCmd.ExecuteNonQuery();
+
+                    // 3. Inventory Services (Child of ECommerce)
+                    pSpan.Value = invId; pParent.Value = ecomId;
+                    pService.Value = TelemetryConstants.ServiceNames.InventoryServices; pName.Value = "InventoryService.ValidateStock";
+                    pDuration.Value = 18.0; pStatus.Value = okStatusCode;
+                    insertTraceCmd.ExecuteNonQuery();
+
+                    // 4. Address Services (Child of ECommerce)
+                    pSpan.Value = addrId; pParent.Value = ecomId;
+                    pService.Value = TelemetryConstants.ServiceNames.AddressServices; pName.Value = "AddressService.ValidateShipping";
+                    pDuration.Value = 28.0; pStatus.Value = okStatusCode;
+                    insertTraceCmd.ExecuteNonQuery();
+
+                    // 5. Order Processing Services (Child of ECommerce)
+                    pSpan.Value = orderProcId; pParent.Value = ecomId;
+                    pService.Value = TelemetryConstants.ServiceNames.OrderProcessingServices; pName.Value = "OrderProcessor.HandleQueue";
+                    pDuration.Value = 85.0; pStatus.Value = okStatusCode;
+                    insertTraceCmd.ExecuteNonQuery();
+
+                    // 6. Customer Survey Services (Child of Order Processing)
+                    pSpan.Value = surveyId; pParent.Value = orderProcId;
+                    pService.Value = TelemetryConstants.ServiceNames.CustomerSurveyServices; pName.Value = "SurveyService.ScheduleSurvey";
+                    pDuration.Value = 120.0; pStatus.Value = okStatusCode;
+                    insertTraceCmd.ExecuteNonQuery();
+                }
+
                 trans.Commit();
-                Console.WriteLine("[KestrelScope] Seeded baseline trace spans.");
+                Console.WriteLine("[KestrelScope] Seeded baseline trace spans across multi-service topology.");
             }
         }
 
@@ -320,6 +402,27 @@ public static class DbInitializer
                     pBody.Value = log.body;
                     pTraceId.Value = log.trace ?? (object)DBNull.Value;
                     pSpanId.Value = log.span ?? (object)DBNull.Value;
+                    insertLogCmd.ExecuteNonQuery();
+                }
+
+                var multiServiceLogs = new (string svc, int offsetMin, string sevText, int sevNum, string body)[]
+                {
+                    (TelemetryConstants.ServiceNames.ECommerceServices, 25, TelemetryConstants.SeverityText.Info, (int)OtelSeverity.Info, "ECommerce cluster node 1 active; transaction pool synchronized."),
+                    (TelemetryConstants.ServiceNames.InventoryServices, 20, TelemetryConstants.SeverityText.Info, (int)OtelSeverity.Info, "Inventory-MySQL master read replica healthy. Cache hit ratio 99.1%."),
+                    (TelemetryConstants.ServiceNames.AddressServices, 18, TelemetryConstants.SeverityText.Info, (int)OtelSeverity.Info, "Postal code validation cache warmed."),
+                    (TelemetryConstants.ServiceNames.OrderProcessingServices, 14, TelemetryConstants.SeverityText.Info, (int)OtelSeverity.Info, "ActiveMQ-OrderQueue listener connected on channel 1."),
+                    (TelemetryConstants.ServiceNames.CustomerSurveyServices, 10, TelemetryConstants.SeverityText.Info, (int)OtelSeverity.Info, "Survey dispatch batch queue idle.")
+                };
+
+                foreach (var log in multiServiceLogs)
+                {
+                    pService.Value = log.svc;
+                    pTime.Value = now.AddMinutes(-log.offsetMin).ToString("o");
+                    pSevText.Value = log.sevText;
+                    pSevNum.Value = log.sevNum;
+                    pBody.Value = log.body;
+                    pTraceId.Value = DBNull.Value;
+                    pSpanId.Value = DBNull.Value;
                     insertLogCmd.ExecuteNonQuery();
                 }
 

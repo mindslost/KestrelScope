@@ -1140,4 +1140,814 @@ async function initUsers() {
   await loadUsers();
 }
 
+// ============================================================================
+// Application Flow Map (AppDynamics Style)
+// ============================================================================
+let flowMapState = {
+  data: null,
+  zoom: 1.0,
+  panX: 0,
+  panY: 0,
+  isPanning: false,
+  panStartX: 0,
+  panStartY: 0,
+  draggedNode: null,
+  dragStartMouseX: 0,
+  dragStartMouseY: 0,
+  dragStartNodeX: 0,
+  dragStartNodeY: 0,
+  selectedNode: null,
+  autoRefreshTimer: null,
+  charts: {
+    load: null,
+    latency: null,
+    errors: null
+  }
+};
+
+async function initFlowMap() {
+  const svg = document.getElementById('flowmapSvg');
+  const viewport = document.getElementById('flowmapViewport');
+  const edgesLayer = document.getElementById('flowmapEdgesLayer');
+  const nodesLayer = document.getElementById('flowmapNodesLayer');
+  if (!svg || !viewport || !edgesLayer || !nodesLayer) return;
+
+  const appSelect = document.getElementById('appSelect');
+  const timeWindowSelect = document.getElementById('timeWindowSelect');
+  const autoRefreshToggle = document.getElementById('autoRefreshToggle');
+  const btnRefresh = document.getElementById('btnRefreshFlowMap');
+  const btnResetLayout = document.getElementById('btnResetLayout');
+  const btnZoomIn = document.getElementById('btnZoomIn');
+  const btnZoomOut = document.getElementById('btnZoomOut');
+  const nodeDrawer = document.getElementById('nodeDrawer');
+  const btnDrawerClose = document.getElementById('btnDrawerClose');
+
+  function updateViewport() {
+    viewport.setAttribute('transform', `translate(${flowMapState.panX}, ${flowMapState.panY}) scale(${flowMapState.zoom})`);
+  }
+
+  function screenToSvg(clientX, clientY) {
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const globalPt = pt.matrixTransform(svg.getScreenCTM().inverse());
+    // Convert to viewport coordinates (accounting for pan and zoom)
+    return {
+      x: (globalPt.x - flowMapState.panX) / flowMapState.zoom,
+      y: (globalPt.y - flowMapState.panY) / flowMapState.zoom
+    };
+  }
+
+  // --- Canvas Pan & Zoom Events ---
+  svg.addEventListener('mousedown', (e) => {
+    // Only pan if clicking canvas background or grid
+    if (e.target === svg || e.target.tagName === 'rect') {
+      flowMapState.isPanning = true;
+      flowMapState.panStartX = e.clientX - flowMapState.panX;
+      flowMapState.panStartY = e.clientY - flowMapState.panY;
+      svg.classList.add('grabbing');
+    }
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (flowMapState.isPanning) {
+      flowMapState.panX = e.clientX - flowMapState.panStartX;
+      flowMapState.panY = e.clientY - flowMapState.panStartY;
+      updateViewport();
+      return;
+    }
+
+    if (flowMapState.draggedNode) {
+      const coords = screenToSvg(e.clientX, e.clientY);
+      flowMapState.draggedNode.x = Math.round(coords.x - flowMapState.dragOffsetX);
+      flowMapState.draggedNode.y = Math.round(coords.y - flowMapState.dragOffsetY);
+
+      // Update node position in DOM
+      const nodeEl = document.querySelector(`.topo-node[data-id="${CSS.escape(flowMapState.draggedNode.id)}"]`);
+      if (nodeEl) {
+        nodeEl.setAttribute('transform', `translate(${flowMapState.draggedNode.x}, ${flowMapState.draggedNode.y})`);
+      }
+
+      // Re-render edges connected to this node
+      renderEdges(flowMapState.data.edges, flowMapState.data.nodes);
+    }
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (flowMapState.isPanning) {
+      flowMapState.isPanning = false;
+      svg.classList.remove('grabbing');
+    }
+    flowMapState.draggedNode = null;
+  });
+
+  svg.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
+    const newZoom = Math.max(0.4, Math.min(2.5, flowMapState.zoom * zoomFactor));
+
+    // Zoom centered around mouse pointer
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const globalPt = pt.matrixTransform(svg.getScreenCTM().inverse());
+
+    flowMapState.panX = globalPt.x - (globalPt.x - flowMapState.panX) * (newZoom / flowMapState.zoom);
+    flowMapState.panY = globalPt.y - (globalPt.y - flowMapState.panY) * (newZoom / flowMapState.zoom);
+    flowMapState.zoom = newZoom;
+    updateViewport();
+  }, { passive: false });
+
+  if (btnZoomIn) {
+    btnZoomIn.addEventListener('click', () => {
+      flowMapState.zoom = Math.min(2.5, flowMapState.zoom * 1.15);
+      updateViewport();
+    });
+  }
+
+  if (btnZoomOut) {
+    btnZoomOut.addEventListener('click', () => {
+      flowMapState.zoom = Math.max(0.4, flowMapState.zoom / 1.15);
+      updateViewport();
+    });
+  }
+
+  if (btnResetLayout) {
+    btnResetLayout.addEventListener('click', () => {
+      flowMapState.zoom = 1.0;
+      flowMapState.panX = 0;
+      flowMapState.panY = 0;
+      updateViewport();
+    });
+  }
+
+  if (btnDrawerClose && nodeDrawer) {
+    btnDrawerClose.addEventListener('click', () => {
+      nodeDrawer.classList.remove('open');
+    });
+  }
+
+  // --- Edge Rendering ---
+  function renderEdges(edges, nodes) {
+    edgesLayer.innerHTML = '';
+    const nodeMap = {};
+    nodes.forEach(n => { nodeMap[n.id] = n; });
+
+    edges.forEach(edge => {
+      const src = nodeMap[edge.source];
+      const tgt = nodeMap[edge.target];
+      if (!src || !tgt) return;
+
+      const dx = tgt.x - src.x;
+      const dy = tgt.y - src.y;
+      const angle = Math.atan2(dy, dx);
+      const dist = Math.hypot(dx, dy);
+
+      // Node boundary radii
+      const srcRadius = src.type === 'service' ? 44 : (src.type === 'database' ? 36 : 30);
+      const tgtRadius = tgt.type === 'service' ? 44 : (tgt.type === 'database' ? 36 : 30);
+
+      const startX = src.x + Math.cos(angle) * srcRadius;
+      const startY = src.y + Math.sin(angle) * srcRadius;
+      const endX = tgt.x - Math.cos(angle) * (tgtRadius + 8);
+      const endY = tgt.y - Math.sin(angle) * (tgtRadius + 8);
+
+      const marker = edge.health === 'critical' ? 'arrowCritical' 
+                   : edge.health === 'warning' ? 'arrowWarning' 
+                   : 'arrowNormal';
+
+      const edgeG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      edgeG.setAttribute('class', 'topo-edge');
+
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', startX);
+      line.setAttribute('y1', startY);
+      line.setAttribute('x2', endX);
+      line.setAttribute('y2', endY);
+      line.setAttribute('class', `topo-edge-line ${edge.isAsync ? 'async-jms' : ''}`);
+      line.setAttribute('marker-end', `url(#${marker})`);
+
+      edgeG.appendChild(line);
+
+      // Midpoint badge
+      const midX = (startX + endX) / 2;
+      const midY = (startY + endY) / 2;
+      const labelText = `${edge.protocol} ${edge.callsPerMin} cpm${edge.avgLatencyMs > 0 ? ', ' + edge.avgLatencyMs + ' ms' : ''}`;
+      const badgeWidth = Math.max(80, labelText.length * 6.5 + 14);
+
+      const badgeRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      badgeRect.setAttribute('x', midX - badgeWidth / 2);
+      badgeRect.setAttribute('y', midY - 9);
+      badgeRect.setAttribute('width', badgeWidth);
+      badgeRect.setAttribute('height', 18);
+      badgeRect.setAttribute('class', 'topo-edge-badge');
+
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', midX);
+      text.setAttribute('y', midY + 4);
+      text.setAttribute('class', 'topo-edge-text');
+      text.textContent = labelText;
+
+      edgeG.appendChild(badgeRect);
+      edgeG.appendChild(text);
+      edgesLayer.appendChild(edgeG);
+    });
+  }
+
+  // --- Node Rendering ---
+  function renderNodes(nodes) {
+    nodesLayer.innerHTML = '';
+
+    nodes.forEach(node => {
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('class', 'topo-node');
+      g.setAttribute('data-id', node.id);
+      g.setAttribute('transform', `translate(${node.x}, ${node.y})`);
+
+      const healthColor = node.health === 'critical' ? '#f1707b' 
+                        : node.health === 'warning' ? '#faa05a' 
+                        : '#54b054';
+
+      const glowFilter = node.health === 'critical' ? 'url(#glowRed)' 
+                       : node.health === 'warning' ? 'url(#glowAmber)' 
+                       : 'url(#glowGreen)';
+
+      if (node.type === 'service') {
+        // Outer glowing ring
+        const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        ring.setAttribute('r', '40');
+        ring.setAttribute('fill', 'none');
+        ring.setAttribute('stroke', healthColor);
+        ring.setAttribute('stroke-width', '3');
+        ring.setAttribute('filter', glowFilter);
+        g.appendChild(ring);
+
+        // Inner circle body
+        const body = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        body.setAttribute('r', '36');
+        body.setAttribute('fill', '#171d27');
+        body.setAttribute('stroke', '#2c3746');
+        body.setAttribute('stroke-width', '1.5');
+        g.appendChild(body);
+
+        // Node count pill
+        const pillG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        pillG.setAttribute('transform', 'translate(-24, -26)');
+        const pillRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        pillRect.setAttribute('width', '48');
+        pillRect.setAttribute('height', '15');
+        pillRect.setAttribute('rx', '7.5');
+        pillRect.setAttribute('fill', '#0f6cbd');
+        const pillText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        pillText.setAttribute('x', '24');
+        pillText.setAttribute('y', '11');
+        pillText.setAttribute('font-size', '9');
+        pillText.setAttribute('fill', '#ffffff');
+        pillText.setAttribute('font-weight', '700');
+        pillText.setAttribute('text-anchor', 'middle');
+        pillText.textContent = `${node.nodeCount} Node${node.nodeCount > 1 ? 's' : ''}`;
+        pillG.appendChild(pillRect);
+        pillG.appendChild(pillText);
+        g.appendChild(pillG);
+
+        // Tech icon / bracket
+        const iconText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        iconText.setAttribute('x', '0');
+        iconText.setAttribute('y', '3');
+        iconText.setAttribute('font-size', '16');
+        iconText.setAttribute('fill', '#479ef5');
+        iconText.setAttribute('text-anchor', 'middle');
+        iconText.textContent = '⚙';
+        g.appendChild(iconText);
+
+        // Label
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', '0');
+        label.setAttribute('y', '54');
+        label.setAttribute('font-size', '11');
+        label.setAttribute('font-weight', '600');
+        label.setAttribute('fill', '#ffffff');
+        label.setAttribute('text-anchor', 'middle');
+        label.textContent = node.label;
+        g.appendChild(label);
+
+        // Metrics subtext
+        const sub = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        sub.setAttribute('x', '0');
+        sub.setAttribute('y', '68');
+        sub.setAttribute('font-size', '9.5');
+        sub.setAttribute('fill', '#8ba2b9');
+        sub.setAttribute('text-anchor', 'middle');
+        sub.textContent = `${node.callsPerMin} cpm | ${node.avgLatencyMs} ms`;
+        g.appendChild(sub);
+
+      } else if (node.type === 'database') {
+        // AppDynamics Database Cylinder Icon
+        const cylG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        cylG.setAttribute('transform', 'translate(-24, -26)');
+
+        // Body rect
+        const cylBody = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        cylBody.setAttribute('x', '0');
+        cylBody.setAttribute('y', '8');
+        cylBody.setAttribute('width', '48');
+        cylBody.setAttribute('height', '32');
+        cylBody.setAttribute('fill', '#1a2636');
+        cylBody.setAttribute('stroke', '#2886de');
+        cylBody.setAttribute('stroke-width', '1.5');
+        cylG.appendChild(cylBody);
+
+        // Bottom ellipse
+        const botEllipse = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+        botEllipse.setAttribute('cx', '24');
+        botEllipse.setAttribute('cy', '40');
+        botEllipse.setAttribute('rx', '24');
+        botEllipse.setAttribute('ry', '8');
+        botEllipse.setAttribute('fill', '#1a2636');
+        botEllipse.setAttribute('stroke', '#2886de');
+        botEllipse.setAttribute('stroke-width', '1.5');
+        cylG.appendChild(botEllipse);
+
+        // Top ellipse
+        const topEllipse = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+        topEllipse.setAttribute('cx', '24');
+        topEllipse.setAttribute('cy', '8');
+        topEllipse.setAttribute('rx', '24');
+        topEllipse.setAttribute('ry', '8');
+        topEllipse.setAttribute('fill', '#253549');
+        topEllipse.setAttribute('stroke', '#479ef5');
+        topEllipse.setAttribute('stroke-width', '1.5');
+        cylG.appendChild(topEllipse);
+
+        // Tech badge text inside cylinder
+        const dbTech = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        dbTech.setAttribute('x', '24');
+        dbTech.setAttribute('y', '28');
+        dbTech.setAttribute('font-size', '9');
+        dbTech.setAttribute('font-weight', '700');
+        dbTech.setAttribute('fill', '#4ad1dc');
+        dbTech.setAttribute('text-anchor', 'middle');
+        dbTech.textContent = node.techBadge || 'DB';
+        cylG.appendChild(dbTech);
+
+        g.appendChild(cylG);
+
+        // Label
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', '0');
+        label.setAttribute('y', '32');
+        label.setAttribute('font-size', '11');
+        label.setAttribute('font-weight', '600');
+        label.setAttribute('fill', '#ffffff');
+        label.setAttribute('text-anchor', 'middle');
+        label.textContent = node.label;
+        g.appendChild(label);
+
+        // Subtext
+        const sub = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        sub.setAttribute('x', '0');
+        sub.setAttribute('y', '46');
+        sub.setAttribute('font-size', '9.5');
+        sub.setAttribute('fill', '#8ba2b9');
+        sub.setAttribute('text-anchor', 'middle');
+        sub.textContent = `${node.callsPerMin} cpm | ${node.avgLatencyMs} ms`;
+        g.appendChild(sub);
+
+      } else if (node.type === 'queue') {
+        // AppDynamics Queue Lozenge
+        const lozenge = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        lozenge.setAttribute('x', '-40');
+        lozenge.setAttribute('y', '-16');
+        lozenge.setAttribute('width', '80');
+        lozenge.setAttribute('height', '32');
+        lozenge.setAttribute('rx', '16');
+        lozenge.setAttribute('fill', '#142232');
+        lozenge.setAttribute('stroke', '#4ad1dc');
+        lozenge.setAttribute('stroke-width', '1.6');
+        lozenge.setAttribute('stroke-dasharray', '4 2');
+        g.appendChild(lozenge);
+
+        // Queue icon
+        const qIcon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        qIcon.setAttribute('x', '0');
+        qIcon.setAttribute('y', '5');
+        qIcon.setAttribute('font-size', '11');
+        qIcon.setAttribute('font-weight', '700');
+        qIcon.setAttribute('fill', '#4ad1dc');
+        qIcon.setAttribute('text-anchor', 'middle');
+        qIcon.textContent = 'ActiveMQ';
+        g.appendChild(qIcon);
+
+        // Label
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', '0');
+        label.setAttribute('y', '28');
+        label.setAttribute('font-size', '11');
+        label.setAttribute('font-weight', '600');
+        label.setAttribute('fill', '#ffffff');
+        label.setAttribute('text-anchor', 'middle');
+        label.textContent = node.label;
+        g.appendChild(label);
+
+        // Subtext
+        const sub = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        sub.setAttribute('x', '0');
+        sub.setAttribute('y', '41');
+        sub.setAttribute('font-size', '9.5');
+        sub.setAttribute('fill', '#4ad1dc');
+        sub.setAttribute('text-anchor', 'middle');
+        sub.textContent = `${node.callsPerMin} cpm`;
+        g.appendChild(sub);
+      }
+
+      // Drag and Click Handlers on Node
+      let hasMoved = false;
+      g.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        hasMoved = false;
+        const coords = screenToSvg(e.clientX, e.clientY);
+        flowMapState.draggedNode = node;
+        flowMapState.dragOffsetX = coords.x - node.x;
+        flowMapState.dragOffsetY = coords.y - node.y;
+      });
+
+      g.addEventListener('mousemove', () => {
+        hasMoved = true;
+      });
+
+      g.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!hasMoved) {
+          openNodeDrawer(node);
+        }
+      });
+
+      nodesLayer.appendChild(g);
+    });
+  }
+
+  // --- Scorecard Panel Update ---
+  function updateScorecard(scorecard) {
+    if (!scorecard) return;
+
+    // Segmented bar
+    const barTxNormal = document.getElementById('barTxNormal');
+    const barTxSlow = document.getElementById('barTxSlow');
+    const barTxVerySlow = document.getElementById('barTxVerySlow');
+    const barTxError = document.getElementById('barTxError');
+
+    if (barTxNormal) barTxNormal.style.width = `${scorecard.normalPercent}%`;
+    if (barTxSlow) barTxSlow.style.width = `${scorecard.slowPercent}%`;
+    if (barTxVerySlow) barTxVerySlow.style.width = `${scorecard.verySlowPercent}%`;
+    if (barTxError) barTxError.style.width = `${scorecard.errorPercent}%`;
+
+    // Percentage labels
+    const txNormalPct = document.getElementById('txNormalPct');
+    const txSlowPct = document.getElementById('txSlowPct');
+    const txErrorPct = document.getElementById('txErrorPct');
+    if (txNormalPct) txNormalPct.textContent = `${scorecard.normalPercent.toFixed(1)}%`;
+    if (txSlowPct) txSlowPct.textContent = `${scorecard.slowPercent.toFixed(1)}%`;
+    if (txErrorPct) txErrorPct.textContent = `${scorecard.errorPercent.toFixed(1)}%`;
+
+    // Node health counts
+    const countNodesNormal = document.getElementById('countNodesNormal');
+    const countNodesWarning = document.getElementById('countNodesWarning');
+    const countNodesCritical = document.getElementById('countNodesCritical');
+    if (countNodesNormal) countNodesNormal.textContent = scorecard.nodesNormal;
+    if (countNodesWarning) countNodesWarning.textContent = scorecard.nodesWarning;
+    if (countNodesCritical) countNodesCritical.textContent = scorecard.nodesCritical;
+
+    // Transaction scorecard rows
+    const scoreNormalBar = document.getElementById('scoreNormalBar');
+    const valScoreNormal = document.getElementById('valScoreNormal');
+    if (scoreNormalBar) scoreNormalBar.style.width = `${scorecard.normalPercent}%`;
+    if (valScoreNormal) valScoreNormal.textContent = `${scorecard.normalPercent.toFixed(1)}%`;
+
+    const scoreSlowBar = document.getElementById('scoreSlowBar');
+    const valScoreSlow = document.getElementById('valScoreSlow');
+    if (scoreSlowBar) scoreSlowBar.style.width = `${scorecard.slowPercent}%`;
+    if (valScoreSlow) valScoreSlow.textContent = `${scorecard.slowPercent.toFixed(1)}%`;
+
+    const scoreVerySlowBar = document.getElementById('scoreVerySlowBar');
+    const valScoreVerySlow = document.getElementById('valScoreVerySlow');
+    if (scoreVerySlowBar) scoreVerySlowBar.style.width = `${scorecard.verySlowPercent}%`;
+    if (valScoreVerySlow) valScoreVerySlow.textContent = `${scorecard.verySlowPercent.toFixed(1)}%`;
+
+    const scoreStallBar = document.getElementById('scoreStallBar');
+    const valScoreStall = document.getElementById('valScoreStall');
+    if (scoreStallBar) scoreStallBar.style.width = `${scorecard.stallPercent}%`;
+    if (valScoreStall) valScoreStall.textContent = `${scorecard.stallPercent.toFixed(1)}%`;
+
+    const scoreErrorsBar = document.getElementById('scoreErrorsBar');
+    const valScoreErrors = document.getElementById('valScoreErrors');
+    if (scoreErrorsBar) scoreErrorsBar.style.width = `${scorecard.errorPercent}%`;
+    if (valScoreErrors) valScoreErrors.textContent = `${scorecard.errorPercent.toFixed(1)}%`;
+
+    // Key metrics
+    const statTotalCalls = document.getElementById('statTotalCalls');
+    const statCallsPerMin = document.getElementById('statCallsPerMin');
+    const statAvgLatency = document.getElementById('statAvgLatency');
+    const statErrorsPerMin = document.getElementById('statErrorsPerMin');
+
+    if (statTotalCalls) statTotalCalls.textContent = scorecard.totalCalls.toLocaleString();
+    if (statCallsPerMin) statCallsPerMin.textContent = scorecard.callsPerMin.toLocaleString();
+    if (statAvgLatency) statAvgLatency.textContent = `${scorecard.avgLatencyMs} ms`;
+    if (statErrorsPerMin) statErrorsPerMin.textContent = scorecard.errorsPerMin.toFixed(2);
+
+    // Headlines
+    const headlineLoadCpm = document.getElementById('headlineLoadCpm');
+    const headlineLatencyMs = document.getElementById('headlineLatencyMs');
+    const headlineErrorRate = document.getElementById('headlineErrorRate');
+    if (headlineLoadCpm) headlineLoadCpm.textContent = Math.round(scorecard.callsPerMin).toLocaleString();
+    if (headlineLatencyMs) headlineLatencyMs.textContent = Math.round(scorecard.avgLatencyMs);
+    if (headlineErrorRate) headlineErrorRate.textContent = `${scorecard.errorPercent.toFixed(1)}%`;
+  }
+
+  // --- Bottom Ribbon Area Charts (Load, Response Time, Errors) ---
+  function renderRibbonCharts(timeSeries) {
+    if (!timeSeries || timeSeries.length === 0) return;
+
+    const labels = timeSeries.map(pt => {
+      const d = new Date(pt.timestamp);
+      return isNaN(d) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    });
+
+    const commonOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#242424',
+          borderColor: 'rgba(255, 255, 255, 0.12)',
+          borderWidth: 1,
+          padding: 6,
+          titleFont: { size: 10 },
+          bodyFont: { size: 10 }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { color: '#707070', font: { size: 9 }, maxTicksLimit: 6 }
+        },
+        y: {
+          grid: { color: 'rgba(255, 255, 255, 0.04)' },
+          ticks: { color: '#707070', font: { size: 9 }, maxTicksLimit: 3 },
+          beginAtZero: true
+        }
+      }
+    };
+
+    // 1. Load Chart
+    const canvasLoad = document.getElementById('chartRibbonLoad');
+    if (canvasLoad) {
+      const ctxLoad = canvasLoad.getContext('2d');
+      const gradLoad = ctxLoad.createLinearGradient(0, 0, 0, 100);
+      gradLoad.addColorStop(0, 'rgba(40, 134, 222, 0.4)');
+      gradLoad.addColorStop(1, 'rgba(40, 134, 222, 0.0)');
+
+      const loadValues = timeSeries.map(pt => pt.callsPerMin);
+      if (flowMapState.charts.load) {
+        flowMapState.charts.load.data.labels = labels;
+        flowMapState.charts.load.data.datasets[0].data = loadValues;
+        flowMapState.charts.load.update();
+      } else {
+        flowMapState.charts.load = new Chart(ctxLoad, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Calls / min',
+              data: loadValues,
+              borderColor: '#2886de',
+              borderWidth: 1.8,
+              backgroundColor: gradLoad,
+              fill: true,
+              tension: 0.35,
+              pointRadius: 0
+            }]
+          },
+          options: commonOptions
+        });
+      }
+    }
+
+    // 2. Response Time Chart
+    const canvasLatency = document.getElementById('chartRibbonResponseTime');
+    if (canvasLatency) {
+      const ctxLat = canvasLatency.getContext('2d');
+      const gradLat = ctxLat.createLinearGradient(0, 0, 0, 100);
+      gradLat.addColorStop(0, 'rgba(84, 176, 84, 0.4)');
+      gradLat.addColorStop(1, 'rgba(84, 176, 84, 0.0)');
+
+      const latValues = timeSeries.map(pt => pt.avgLatencyMs);
+      if (flowMapState.charts.latency) {
+        flowMapState.charts.latency.data.labels = labels;
+        flowMapState.charts.latency.data.datasets[0].data = latValues;
+        flowMapState.charts.latency.update();
+      } else {
+        flowMapState.charts.latency = new Chart(ctxLat, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Avg Latency (ms)',
+              data: latValues,
+              borderColor: '#54b054',
+              borderWidth: 1.8,
+              backgroundColor: gradLat,
+              fill: true,
+              tension: 0.35,
+              pointRadius: 0
+            }]
+          },
+          options: commonOptions
+        });
+      }
+    }
+
+    // 3. Errors Chart
+    const canvasErrors = document.getElementById('chartRibbonErrors');
+    if (canvasErrors) {
+      const ctxErr = canvasErrors.getContext('2d');
+      const gradErr = ctxErr.createLinearGradient(0, 0, 0, 100);
+      gradErr.addColorStop(0, 'rgba(241, 112, 123, 0.4)');
+      gradErr.addColorStop(1, 'rgba(241, 112, 123, 0.0)');
+
+      const errValues = timeSeries.map(pt => pt.errorRatePercent);
+      if (flowMapState.charts.errors) {
+        flowMapState.charts.errors.data.labels = labels;
+        flowMapState.charts.errors.data.datasets[0].data = errValues;
+        flowMapState.charts.errors.update();
+      } else {
+        flowMapState.charts.errors = new Chart(ctxErr, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Error Rate (%)',
+              data: errValues,
+              borderColor: '#f1707b',
+              borderWidth: 1.8,
+              backgroundColor: gradErr,
+              fill: true,
+              tension: 0.35,
+              pointRadius: 0
+            }]
+          },
+          options: commonOptions
+        });
+      }
+    }
+  }
+
+  // --- Node Drawer Detail Loading ---
+  async function openNodeDrawer(node) {
+    if (!nodeDrawer) return;
+
+    flowMapState.selectedNode = node;
+    const titleEl = document.getElementById('drawerNodeTitle');
+    const typeEl = document.getElementById('drawerNodeType');
+    const techEl = document.getElementById('drawerNodeTech');
+    const countEl = document.getElementById('drawerNodeCount');
+    const cpmEl = document.getElementById('drawerCallsPerMin');
+    const latEl = document.getElementById('drawerAvgLatency');
+    const errEl = document.getElementById('drawerErrorRate');
+
+    const btnDrillTraces = document.getElementById('btnDrillTraces');
+    const btnDrillLogs = document.getElementById('btnDrillLogs');
+    const btnDrillMetrics = document.getElementById('btnDrillMetrics');
+
+    if (titleEl) titleEl.textContent = node.label;
+    if (typeEl) typeEl.textContent = node.type.toUpperCase();
+    if (techEl) techEl.textContent = node.techBadge || 'Service';
+    if (countEl) countEl.textContent = `${node.nodeCount} Node${node.nodeCount > 1 ? 's' : ''}`;
+    if (cpmEl) cpmEl.textContent = node.callsPerMin.toLocaleString();
+    if (latEl) latEl.textContent = `${node.avgLatencyMs} ms`;
+    if (errEl) errEl.textContent = `${node.errorRatePercent}%`;
+
+    // Action links
+    if (btnDrillTraces) btnDrillTraces.href = `/traces.html?service=${encodeURIComponent(node.id)}`;
+    if (btnDrillLogs) btnDrillLogs.href = `/logs.html?service=${encodeURIComponent(node.id)}`;
+    if (btnDrillMetrics) btnDrillMetrics.href = `/dashboard.html?service=${encodeURIComponent(node.id)}`;
+
+    nodeDrawer.classList.add('open');
+
+    // Fetch node telemetry
+    const minutes = timeWindowSelect ? timeWindowSelect.value : 15;
+    try {
+      const res = await fetch(`/api/topology/nodes/${encodeURIComponent(node.id)}?minutes=${minutes}`);
+      if (res.ok) {
+        const details = await res.json();
+
+        // Render recent traces in drawer
+        const tracesTbody = document.getElementById('drawerTracesList');
+        if (tracesTbody && details.recentTraces) {
+          if (details.recentTraces.length === 0) {
+            tracesTbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#707070;">No recent traces</td></tr>';
+          } else {
+            tracesTbody.innerHTML = details.recentTraces.map(tr => `
+              <tr>
+                <td style="font-weight:600; color:#fff;">${escapeHtml(tr.spanName)}</td>
+                <td>${tr.durationMs.toFixed(1)} ms</td>
+                <td><span class="status-badge ${tr.statusCode === 'Error' ? 'status-error' : 'status-ok'}">${escapeHtml(tr.statusCode)}</span></td>
+                <td><a href="/traces.html?traceId=${encodeURIComponent(tr.traceId)}" class="fui-btn fui-btn-subtle" style="padding:2px 6px; font-size:11px;">View</a></td>
+              </tr>
+            `).join('');
+          }
+        }
+
+        // Render recent logs in drawer
+        const logsTbody = document.getElementById('drawerLogsList');
+        if (logsTbody && details.recentLogs) {
+          if (details.recentLogs.length === 0) {
+            logsTbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#707070;">No recent logs</td></tr>';
+          } else {
+            logsTbody.innerHTML = details.recentLogs.map(lg => `
+              <tr>
+                <td><span class="severity-badge sev-${(lg.severityText || 'info').toLowerCase()}">${escapeHtml(lg.severityText || 'INFO')}</span></td>
+                <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(lg.body)}</td>
+                <td style="color:#707070; font-size:10px;">${new Date(lg.timestamp).toLocaleTimeString()}</td>
+              </tr>
+            `).join('');
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load node details', err);
+    }
+  }
+
+  // --- Main Data Loading ---
+  async function loadFlowMap() {
+    const minutes = timeWindowSelect ? timeWindowSelect.value : 15;
+    const app = appSelect ? appSelect.value : 'ECommerce';
+
+    try {
+      const res = await fetch(`/api/topology/flow-map?minutes=${minutes}&application=${encodeURIComponent(app)}`);
+      if (!res.ok) return;
+
+      const data = await res.json();
+      flowMapState.data = data;
+
+      renderEdges(data.edges, data.nodes);
+      renderNodes(data.nodes);
+      updateScorecard(data.scorecard);
+      renderRibbonCharts(data.timeSeries);
+
+      // If a node was already selected, update its stats
+      if (flowMapState.selectedNode) {
+        const updatedNode = data.nodes.find(n => n.id === flowMapState.selectedNode.id);
+        if (updatedNode) openNodeDrawer(updatedNode);
+      }
+    } catch (err) {
+      console.error('Failed to load flow map data', err);
+    }
+  }
+
+  // Event Listeners
+  if (timeWindowSelect) {
+    timeWindowSelect.addEventListener('change', () => loadFlowMap());
+  }
+
+  if (appSelect) {
+    appSelect.addEventListener('change', () => loadFlowMap());
+  }
+
+  if (btnRefresh) {
+    btnRefresh.addEventListener('click', () => loadFlowMap());
+  }
+
+  // Auto-refresh interval (15s)
+  function setupAutoRefresh() {
+    if (flowMapState.autoRefreshTimer) {
+      clearInterval(flowMapState.autoRefreshTimer);
+      flowMapState.autoRefreshTimer = null;
+    }
+    if (autoRefreshToggle && autoRefreshToggle.checked) {
+      flowMapState.autoRefreshTimer = setInterval(() => {
+        loadFlowMap();
+      }, 15000);
+    }
+  }
+
+  if (autoRefreshToggle) {
+    autoRefreshToggle.addEventListener('change', setupAutoRefresh);
+  }
+
+  setupAutoRefresh();
+  await loadFlowMap();
+
+  // Check URL query parameters (e.g. ?service=...)
+  const params = new URLSearchParams(window.location.search);
+  const targetService = params.get('service');
+  if (targetService && flowMapState.data) {
+    const matchedNode = flowMapState.data.nodes.find(n => n.id === targetService);
+    if (matchedNode) {
+      openNodeDrawer(matchedNode);
+    }
+  }
+}
+
 

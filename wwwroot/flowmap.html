@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Application Flow Map — KestrelScope</title>
+  <link rel="stylesheet" href="/css/main.css">
+  <script src="/js/chart.min.js"></script>
+</head>
+<body class="flowmap-body">
+  <header class="navbar">
+    <a href="/dashboard.html" class="nav-brand">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2zm1 17.93V18a2 2 0 0 0-2-2h-1v-2h2a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1H9.83a3.001 3.001 0 0 0-2.83-2V4.07A8.006 8.006 0 0 1 19.93 11H18a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h1.93A8.01 8.01 0 0 1 13 19.93z"/>
+      </svg>
+      <span>KestrelScope</span>
+    </a>
+
+    <nav class="nav-links">
+      <a href="/flowmap.html" class="nav-link active">
+        <svg viewBox="0 0 24 24"><path d="M16 2a3 3 0 0 0-2.83 2H10.83A3.001 3.001 0 0 0 8 2a3 3 0 0 0-3 3c0 1.3.84 2.4 2 2.82V12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2H9V9.82c.48-.18.9-.48 1.23-.85l2.6 1.3c-.02.18-.03.36-.03.55a3 3 0 1 0 6 0 3 3 0 0 0-2.8-3v-1.64c1.16-.41 2-1.52 2-2.82a3 3 0 0 0-3-3z"/></svg>
+        <span>Flow Map</span>
+      </a>
+      <a href="/dashboard.html" class="nav-link">
+        <svg viewBox="0 0 24 24"><path d="M3 3a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h18a1 1 0 1 0 0-2H4V4a1 1 0 0 0-1-1zm5 14a1 1 0 0 0 1-1v-4a1 1 0 1 0-2 0v4a1 1 0 0 0 1 1zm5 0a1 1 0 0 0 1-1V8a1 1 0 1 0-2 0v8a1 1 0 0 0 1 1zm5 0a1 1 0 0 0 1-1v-7a1 1 0 1 0-2 0v7a1 1 0 0 0 1 1z"/></svg>
+        <span>Metrics</span>
+      </a>
+      <a href="/traces.html" class="nav-link">
+        <svg viewBox="0 0 24 24"><path d="M10 2a8 8 0 0 1 6.32 12.906l4.387 4.387a1 1 0 0 1-1.414 1.414l-4.387-4.387A8 8 0 1 1 10 2zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12zm-1 3a1 1 0 0 1 2 0v3.586l2.707 2.707a1 1 0 0 1-1.414 1.414l-3-3A1 1 0 0 1 9 11V7z"/></svg>
+        <span>Traces</span>
+      </a>
+      <a href="/logs.html" class="nav-link">
+        <svg viewBox="0 0 24 24"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H14l6 6v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 19.5v-15zM13.5 3.5V8H18l-4.5-4.5zM7 11a1 1 0 0 0 0 2h10a1 1 0 1 0 0-2H7zm0 4a1 1 0 1 0 0 2h10a1 1 0 1 0 0-2H7z"/></svg>
+        <span>Logs</span>
+      </a>
+      <a href="/alerts.html" class="nav-link">
+        <svg viewBox="0 0 24 24"><path d="M12 2c.7 0 1.34.37 1.69.97l8.03 13.91A1.96 1.96 0 0 1 20.02 20H3.98a1.96 1.96 0 0 1-1.7-2.92l8.03-13.91A1.95 1.95 0 0 1 12 2zm0 13a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm0-7a1 1 0 0 0-1 1v4a1 1 0 1 0 2 0V9a1 1 0 0 0-1-1z"/></svg>
+        <span>Alert Rules</span>
+      </a>
+      <a href="/users.html" class="nav-link nav-users-link" style="display:none;">
+        <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+        <span>Users</span>
+      </a>
+    </nav>
+
+    <div class="nav-user">
+      <div id="userAvatar" class="user-avatar">AD</div>
+      <button class="btn-logout" onclick="handleLogout()">
+        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:currentColor;"><path d="M5 3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7a1 1 0 1 0 0-2H5V5h7a1 1 0 1 0 0-2H5zm12.293 4.293a1 1 0 0 1 1.414 0l4 4a1 1 0 0 1 0 1.414l-4 4a1 1 0 0 1-1.414-1.414L18.586 13H10a1 1 0 1 1 0-2h8.586l-1.293-1.293a1 1 0 0 1 0-1.414z"/></svg>
+        <span>Sign Out</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Flow Map Sub-Header Toolbar -->
+  <div class="flowmap-toolbar">
+    <div class="flowmap-toolbar-left">
+      <div class="toolbar-item">
+        <label for="appSelect">Application:</label>
+        <select id="appSelect" class="fui-select">
+          <option value="ECommerce" selected>ECommerce</option>
+          <option value="All">All Applications</option>
+        </select>
+      </div>
+
+      <div class="toolbar-item">
+        <label for="timeWindowSelect">Time Range:</label>
+        <select id="timeWindowSelect" class="fui-select">
+          <option value="15" selected>Last 15 minutes</option>
+          <option value="60">Last 1 Hour</option>
+          <option value="360">Last 6 Hours</option>
+          <option value="1440">Last 24 Hours</option>
+        </select>
+      </div>
+
+      <div class="toolbar-badge">
+        <span class="baseline-dot"></span>
+        <span>Baseline: Standard</span>
+      </div>
+    </div>
+
+    <div class="flowmap-toolbar-right">
+      <div class="toolbar-item auto-refresh-toggle">
+        <input type="checkbox" id="autoRefreshToggle" checked>
+        <label for="autoRefreshToggle">Auto-Refresh (15s)</label>
+      </div>
+
+      <button id="btnRefreshFlowMap" class="fui-btn fui-btn-subtle" title="Refresh Flow Map">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 4V1L8 5l4 4V6a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z"/></svg>
+        <span>Refresh</span>
+      </button>
+
+      <button id="btnResetLayout" class="fui-btn fui-btn-subtle" title="Reset Layout & Fit">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M10 4H4c-1.1 0-2 .9-2 2v6h2V6h6V4zm10 0h-6v2h6v6h2V6c0-1.1-.9-2-2-2zM4 20h6v-2H4v-6H2v6c0 1.1.9 2 2 2zm16 0c1.1 0 2-.9 2-2v-6h-2v6h-6v2h6z"/></svg>
+        <span>Fit to Screen</span>
+      </button>
+
+      <div class="zoom-controls">
+        <button id="btnZoomIn" class="fui-btn-icon" title="Zoom In">+</button>
+        <button id="btnZoomOut" class="fui-btn-icon" title="Zoom Out">−</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Flow Map Main Workspace -->
+  <div class="flowmap-workspace">
+    <!-- Center Graph Area -->
+    <div class="flowmap-canvas-wrapper" id="flowmapCanvasWrapper">
+      <svg id="flowmapSvg" class="flowmap-svg" width="100%" height="100%">
+        <defs>
+          <!-- Grid Background Pattern -->
+          <pattern id="flowmapGrid" width="30" height="30" patternUnits="userSpaceOnUse">
+            <path d="M 30 0 L 0 0 0 30" fill="none" stroke="rgba(255, 255, 255, 0.04)" stroke-width="1"/>
+          </pattern>
+
+          <!-- Marker Arrowheads -->
+          <marker id="arrowNormal" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#2886de" />
+          </marker>
+          <marker id="arrowWarning" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#faa05a" />
+          </marker>
+          <marker id="arrowCritical" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#f1707b" />
+          </marker>
+
+          <!-- Glowing Filters -->
+          <filter id="glowGreen" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#54b054" flood-opacity="0.6"/>
+          </filter>
+          <filter id="glowAmber" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#faa05a" flood-opacity="0.6"/>
+          </filter>
+          <filter id="glowRed" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#f1707b" flood-opacity="0.8"/>
+          </filter>
+        </defs>
+
+        <!-- Grid Layer -->
+        <rect width="100%" height="100%" fill="url(#flowmapGrid)" />
+
+        <!-- Zoomable & Pannable Viewport Group -->
+        <g id="flowmapViewport">
+          <g id="flowmapEdgesLayer"></g>
+          <g id="flowmapNodesLayer"></g>
+        </g>
+      </svg>
+
+      <!-- Canvas Floating Legend / Help -->
+      <div class="flowmap-legend">
+        <span class="legend-item"><span class="legend-dot normal"></span> Normal</span>
+        <span class="legend-item"><span class="legend-dot warning"></span> Warning</span>
+        <span class="legend-item"><span class="legend-dot critical"></span> Critical</span>
+        <span class="legend-item"><span class="legend-dash"></span> Async Queue Flow</span>
+      </div>
+    </div>
+
+    <!-- Right Health Scorecard Panel -->
+    <aside class="scorecard-panel" id="scorecardPanel">
+      <div class="scorecard-header">
+        <h3>Application Scorecard</h3>
+        <span class="app-status-badge healthy" id="appOverallStatus">Healthy</span>
+      </div>
+
+      <!-- Business Transaction Health Section -->
+      <div class="scorecard-section">
+        <div class="section-title">Business Transaction Health</div>
+        <div class="health-segmented-bar">
+          <div id="barTxNormal" class="seg-fill seg-green" style="width: 98.4%;" title="Normal: 98.4%"></div>
+          <div id="barTxSlow" class="seg-fill seg-amber" style="width: 1.1%;" title="Slow: 1.1%"></div>
+          <div id="barTxVerySlow" class="seg-fill seg-orange" style="width: 0.3%;" title="Very Slow: 0.3%"></div>
+          <div id="barTxError" class="seg-fill seg-red" style="width: 0.2%;" title="Error: 0.2%"></div>
+        </div>
+        <div class="health-meta-row">
+          <span class="meta-item"><span class="dot-green"></span> Normal: <b id="txNormalPct">98.4%</b></span>
+          <span class="meta-item"><span class="dot-amber"></span> Slow: <b id="txSlowPct">1.1%</b></span>
+          <span class="meta-item"><span class="dot-red"></span> Errors: <b id="txErrorPct">0.2%</b></span>
+        </div>
+      </div>
+
+      <!-- Node Health Section -->
+      <div class="scorecard-section">
+        <div class="section-title">Node Health Status</div>
+        <div class="node-health-pills">
+          <div class="node-pill pill-green">
+            <span class="pill-count" id="countNodesNormal">12</span>
+            <span class="pill-label">Normal</span>
+          </div>
+          <div class="node-pill pill-amber">
+            <span class="pill-count" id="countNodesWarning">0</span>
+            <span class="pill-label">Warning</span>
+          </div>
+          <div class="node-pill pill-red">
+            <span class="pill-count" id="countNodesCritical">0</span>
+            <span class="pill-label">Critical</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transaction Scorecard Breakdown -->
+      <div class="scorecard-section">
+        <div class="section-title">Transaction Scorecard</div>
+        <div class="scorecard-rows">
+          <div class="scorecard-row">
+            <span class="label">Normal (&lt;200ms)</span>
+            <div class="row-bar"><div id="scoreNormalBar" class="row-fill green" style="width: 98.4%"></div></div>
+            <span class="value" id="valScoreNormal">98.4%</span>
+          </div>
+          <div class="scorecard-row">
+            <span class="label">Slow (200-500ms)</span>
+            <div class="row-bar"><div id="scoreSlowBar" class="row-fill amber" style="width: 1.1%"></div></div>
+            <span class="value" id="valScoreSlow">1.1%</span>
+          </div>
+          <div class="scorecard-row">
+            <span class="label">Very Slow (&gt;500ms)</span>
+            <div class="row-bar"><div id="scoreVerySlowBar" class="row-fill orange" style="width: 0.3%"></div></div>
+            <span class="value" id="valScoreVerySlow">0.3%</span>
+          </div>
+          <div class="scorecard-row">
+            <span class="label">Stall (&gt;1.5s)</span>
+            <div class="row-bar"><div id="scoreStallBar" class="row-fill purple" style="width: 0%"></div></div>
+            <span class="value" id="valScoreStall">0.0%</span>
+          </div>
+          <div class="scorecard-row">
+            <span class="label">Errors</span>
+            <div class="row-bar"><div id="scoreErrorsBar" class="row-fill red" style="width: 0.2%"></div></div>
+            <span class="value" id="valScoreErrors">0.2%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Key Aggregate Metrics Section -->
+      <div class="scorecard-section">
+        <div class="section-title">Application Key Metrics</div>
+        <div class="app-metrics-grid">
+          <div class="metric-cell">
+            <span class="metric-num" id="statTotalCalls">45,000</span>
+            <span class="metric-desc">Total Calls</span>
+          </div>
+          <div class="metric-cell">
+            <span class="metric-num" id="statCallsPerMin">865.0</span>
+            <span class="metric-desc">Calls / Min</span>
+          </div>
+          <div class="metric-cell">
+            <span class="metric-num" id="statAvgLatency">42 ms</span>
+            <span class="metric-desc">Avg Response Time</span>
+          </div>
+          <div class="metric-cell">
+            <span class="metric-num" id="statErrorsPerMin">0.8</span>
+            <span class="metric-desc">Errors / Min</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Bottom Ribbon: 3 Metric Area Charts (Load, Response Time, Errors) -->
+  <div class="flowmap-bottom-ribbon">
+    <!-- Chart 1: Load -->
+    <div class="ribbon-chart-card">
+      <div class="ribbon-chart-header">
+        <div class="ribbon-title">
+          <span class="ribbon-icon blue">⚡</span>
+          <span>Load</span>
+        </div>
+        <div class="ribbon-headline">
+          <span class="headline-val" id="headlineLoadCpm">865</span>
+          <span class="headline-unit">calls / min</span>
+        </div>
+      </div>
+      <div class="ribbon-chart-container">
+        <canvas id="chartRibbonLoad"></canvas>
+      </div>
+    </div>
+
+    <!-- Chart 2: Response Time -->
+    <div class="ribbon-chart-card">
+      <div class="ribbon-chart-header">
+        <div class="ribbon-title">
+          <span class="ribbon-icon green">⏱</span>
+          <span>Response Time</span>
+        </div>
+        <div class="ribbon-headline">
+          <span class="headline-val" id="headlineLatencyMs">42</span>
+          <span class="headline-unit">ms</span>
+        </div>
+      </div>
+      <div class="ribbon-chart-container">
+        <canvas id="chartRibbonResponseTime"></canvas>
+      </div>
+    </div>
+
+    <!-- Chart 3: Errors -->
+    <div class="ribbon-chart-card">
+      <div class="ribbon-chart-header">
+        <div class="ribbon-title">
+          <span class="ribbon-icon red">⚠</span>
+          <span>Errors</span>
+        </div>
+        <div class="ribbon-headline">
+          <span class="headline-val" id="headlineErrorRate">0.2%</span>
+          <span class="headline-unit">error rate</span>
+        </div>
+      </div>
+      <div class="ribbon-chart-container">
+        <canvas id="chartRibbonErrors"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Node Details Slide-Over Drawer -->
+  <div class="node-drawer" id="nodeDrawer">
+    <div class="node-drawer-header">
+      <div class="node-header-info">
+        <h2 id="drawerNodeTitle">Service Details</h2>
+        <div class="drawer-badges">
+          <span class="drawer-badge" id="drawerNodeType">service</span>
+          <span class="drawer-badge" id="drawerNodeTech">Java</span>
+          <span class="drawer-badge" id="drawerNodeCount">1 Node</span>
+        </div>
+      </div>
+      <button class="btn-drawer-close" id="btnDrawerClose" title="Close Drawer">&times;</button>
+    </div>
+
+    <div class="node-drawer-body">
+      <!-- Quick Metric Tiles -->
+      <div class="drawer-metrics-grid">
+        <div class="drawer-metric-card">
+          <span class="val" id="drawerCallsPerMin">0</span>
+          <span class="lbl">Calls / Min</span>
+        </div>
+        <div class="drawer-metric-card">
+          <span class="val" id="drawerAvgLatency">0 ms</span>
+          <span class="lbl">Avg Latency</span>
+        </div>
+        <div class="drawer-metric-card">
+          <span class="val" id="drawerErrorRate">0%</span>
+          <span class="lbl">Error Rate</span>
+        </div>
+      </div>
+
+      <!-- Action Drill-down Buttons -->
+      <div class="drawer-actions">
+        <a id="btnDrillTraces" href="/traces.html" class="fui-btn fui-btn-primary">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M10 2a8 8 0 0 1 6.32 12.906l4.387 4.387a1 1 0 0 1-1.414 1.414l-4.387-4.387A8 8 0 1 1 10 2zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12zm-1 3a1 1 0 0 1 2 0v3.586l2.707 2.707a1 1 0 0 1-1.414 1.414l-3-3A1 1 0 0 1 9 11V7z"/></svg>
+          <span>View Traces</span>
+        </a>
+        <a id="btnDrillLogs" href="/logs.html" class="fui-btn fui-btn-secondary">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H14l6 6v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 19.5v-15zM13.5 3.5V8H18l-4.5-4.5zM7 11a1 1 0 0 0 0 2h10a1 1 0 1 0 0-2H7zm0 4a1 1 0 1 0 0 2h10a1 1 0 1 0 0-2H7z"/></svg>
+          <span>View Logs</span>
+        </a>
+        <a id="btnDrillMetrics" href="/dashboard.html" class="fui-btn fui-btn-secondary">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M3 3a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h18a1 1 0 1 0 0-2H4V4a1 1 0 0 0-1-1zm5 14a1 1 0 0 0 1-1v-4a1 1 0 1 0-2 0v4a1 1 0 0 0 1 1zm5 0a1 1 0 0 0 1-1V8a1 1 0 1 0-2 0v8a1 1 0 0 0 1 1zm5 0a1 1 0 0 0 1-1v-7a1 1 0 1 0-2 0v7a1 1 0 0 0 1 1z"/></svg>
+          <span>View Metrics</span>
+        </a>
+      </div>
+
+      <!-- Recent Spans Table -->
+      <div class="drawer-section">
+        <h4>Recent Distributed Traces</h4>
+        <div class="drawer-table-wrapper">
+          <table class="drawer-table" id="drawerTracesTable">
+            <thead>
+              <tr>
+                <th>Operation</th>
+                <th>Duration</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="drawerTracesList">
+              <tr><td colspan="4" style="text-align:center;">No recent traces</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Recent Logs Table -->
+      <div class="drawer-section">
+        <h4>Correlated Logs</h4>
+        <div class="drawer-table-wrapper">
+          <table class="drawer-table" id="drawerLogsTable">
+            <thead>
+              <tr>
+                <th>Severity</th>
+                <th>Message</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="drawerLogsList">
+              <tr><td colspan="3" style="text-align:center;">No recent logs</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const user = await checkAuth();
+      if (user) {
+        initFlowMap();
+      }
+    });
+  </script>
+</body>
+</html>
+

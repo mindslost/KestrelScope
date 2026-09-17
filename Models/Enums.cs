@@ -32,3 +32,23 @@ public enum OtelSeverity
     Fatal = 21
 }
 
+/// <summary>
+/// AppDynamics topology node types.
+/// </summary>
+public enum TopologyNodeType
+{
+    Service,
+    Database,
+    Queue
+}
+
+/// <summary>
+/// AppDynamics node and transaction health status.
+/// </summary>
+public enum TopologyHealthStatus
+{
+    Normal,
+    Warning,
+    Critical
+}
+
