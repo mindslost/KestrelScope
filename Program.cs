@@ -12,6 +12,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using KestrelScope;
+using KestrelScope.Constants;
 using KestrelScope.Services;
 using KestrelScope.Tools;
 
@@ -24,7 +25,7 @@ if (args.Contains("--synthetic"))
 var builder = WebApplication.CreateBuilder(args);
 
 string connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
-    ?? "Data Source=observability.db;";
+    ?? AppConstants.Database.DefaultConnectionString;
 builder.Configuration["ConnectionStrings:DefaultConnection"] = connectionString;
 
 // Initialize SQLite schema and WAL mode
@@ -32,11 +33,11 @@ DbInitializer.Initialize(connectionString);
 
 builder.Services.AddControllers();
 builder.Services.AddHttpClient();
-builder.Services.AddAuthentication("CookieAuth")
-    .AddCookie("CookieAuth", options =>
+builder.Services.AddAuthentication(AppConstants.Auth.CookieScheme)
+    .AddCookie(AppConstants.Auth.CookieScheme, options =>
     {
-        options.Cookie.Name = "ObsSession";
-        options.LoginPath = "/login.html";
+        options.Cookie.Name = AppConstants.Auth.CookieName;
+        options.LoginPath = AppConstants.Auth.LoginPath;
         options.Events.OnRedirectToLogin = ctx =>
         {
             if (ctx.Request.Path.StartsWithSegments("/api"))

@@ -7,7 +7,7 @@ using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Security.Claims;
-using System.Threading.Tasks;
+using KestrelScope.Constants;
 using KestrelScope.Models;
 using KestrelScope.Services;
 
@@ -22,7 +22,7 @@ public class AuthController : ControllerBase
 
     public AuthController(IConfiguration config)
     {
-        _dbConn = config.GetConnectionString("DefaultConnection") ?? "Data Source=observability.db;";
+        _dbConn = config.GetConnectionString("DefaultConnection") ?? AppConstants.Database.DefaultConnectionString;
     }
 
     [HttpPost("login")]
@@ -44,24 +44,22 @@ public class AuthController : ControllerBase
             return Unauthorized(new { error = "Invalid credentials." });
         }
 
-        string normalizedRole = string.Equals(user.Role, "admin", StringComparison.OrdinalIgnoreCase)
-            ? "Admin"
-            : "Standard";
+        string normalizedRole = AppConstants.UserRoles.Normalize(user.Role);
 
         var claims = new List<Claim>
         {
             new(ClaimTypes.Name, user.Username),
             new(ClaimTypes.Role, normalizedRole),
-            new("UserId", user.Id.ToString())
+            new(AppConstants.Auth.UserIdClaim, user.Id.ToString())
         };
 
-        var identity = new ClaimsIdentity(claims, "CookieAuth");
+        var identity = new ClaimsIdentity(claims, AppConstants.Auth.CookieScheme);
         var principal = new ClaimsPrincipal(identity);
 
-        await HttpContext.SignInAsync("CookieAuth", principal, new AuthenticationProperties
+        await HttpContext.SignInAsync(AppConstants.Auth.CookieScheme, principal, new AuthenticationProperties
         {
             IsPersistent = true,
-            ExpiresUtc = DateTimeOffset.UtcNow.AddDays(7)
+            ExpiresUtc = DateTimeOffset.UtcNow.AddDays(AppConstants.Auth.CookieExpirationDays)
         });
 
         return Ok(new { status = "success", username = user.Username, role = normalizedRole });
@@ -70,7 +68,7 @@ public class AuthController : ControllerBase
     [HttpPost("logout")]
     public async Task<IActionResult> Logout()
     {
-        await HttpContext.SignOutAsync("CookieAuth");
+        await HttpContext.SignOutAsync(AppConstants.Auth.CookieScheme);
         return Ok(new { status = "logged_out" });
     }
 
@@ -82,7 +80,7 @@ public class AuthController : ControllerBase
             return Ok(new
             {
                 username = User.Identity.Name,
-                role = User.FindFirst(ClaimTypes.Role)?.Value ?? "Standard",
+                role = User.FindFirst(ClaimTypes.Role)?.Value ?? AppConstants.UserRoles.StandardNormalized,
                 isAuthenticated = true
             });
         }
@@ -106,7 +104,7 @@ public class MetricsController : ControllerBase
 
     public MetricsController(IConfiguration config)
     {
-        _dbConn = config.GetConnectionString("DefaultConnection") ?? "Data Source=observability.db;";
+        _dbConn = config.GetConnectionString("DefaultConnection") ?? AppConstants.Database.DefaultConnectionString;
     }
 
     [HttpGet("services")]
@@ -135,12 +133,12 @@ public class MetricsController : ControllerBase
     public async Task<IActionResult> GetSeries(
         [FromQuery] string service,
         [FromQuery] string metric,
-        [FromQuery] int minutes = 60)
+        [FromQuery] int minutes = AppConstants.QueryDefaults.DefaultWindowMinutes)
     {
         if (string.IsNullOrWhiteSpace(service) || string.IsNullOrWhiteSpace(metric))
             return BadRequest(new { error = "Service and metric query parameters are required." });
 
-        if (minutes <= 0) minutes = 60;
+        if (minutes <= 0) minutes = AppConstants.QueryDefaults.DefaultWindowMinutes;
         var windowStart = DateTime.UtcNow.AddMinutes(-minutes).ToString("o");
 
         using var conn = new SqliteConnection(_dbConn);
@@ -198,7 +196,7 @@ public class AlertsController : ControllerBase
 
     public AlertsController(IConfiguration config)
     {
-        _dbConn = config.GetConnectionString("DefaultConnection") ?? "Data Source=observability.db;";
+        _dbConn = config.GetConnectionString("DefaultConnection") ?? AppConstants.Database.DefaultConnectionString;
     }
 
     [HttpGet]
@@ -212,7 +210,7 @@ public class AlertsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = AppConstants.UserRoles.AdminNormalized)]
     public async Task<IActionResult> SaveRule([FromBody] AlertRuleDto rule)
     {
         if (string.IsNullOrWhiteSpace(rule.Name) || string.IsNullOrWhiteSpace(rule.MetricName) || string.IsNullOrWhiteSpace(rule.WebhookUrl))
@@ -247,7 +245,7 @@ public class AlertsController : ControllerBase
     }
 
     [HttpPatch("{id}/toggle")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = AppConstants.UserRoles.AdminNormalized)]
     public async Task<IActionResult> ToggleRule(long id)
     {
         using var conn = new SqliteConnection(_dbConn);
@@ -268,7 +266,7 @@ public class AlertsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = AppConstants.UserRoles.AdminNormalized)]
     public async Task<IActionResult> DeleteRule(long id)
     {
         using var conn = new SqliteConnection(_dbConn);
@@ -284,14 +282,14 @@ public class AlertsController : ControllerBase
 #region Users Controller (/api/users)
 [ApiController]
 [Route("api/users")]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = AppConstants.UserRoles.AdminNormalized)]
 public class UsersController : ControllerBase
 {
     private readonly string _dbConn;
 
     public UsersController(IConfiguration config)
     {
-        _dbConn = config.GetConnectionString("DefaultConnection") ?? "Data Source=observability.db;";
+        _dbConn = config.GetConnectionString("DefaultConnection") ?? AppConstants.Database.DefaultConnectionString;
     }
 
     [HttpGet]
@@ -310,7 +308,7 @@ public class UsersController : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Username) || string.IsNullOrWhiteSpace(req.Password))
             return BadRequest(new { error = "Username and password are required." });
 
-        string role = string.Equals(req.Role, "admin", StringComparison.OrdinalIgnoreCase) ? "admin" : "standard";
+        string role = AppConstants.UserRoles.ToDbValue(req.Role);
 
         using var conn = new SqliteConnection(_dbConn);
         await conn.OpenAsync();
@@ -355,12 +353,13 @@ public class UsersController : ControllerBase
         string targetRole = user.Role;
         if (!string.IsNullOrWhiteSpace(req.Role))
         {
-            targetRole = string.Equals(req.Role, "admin", StringComparison.OrdinalIgnoreCase) ? "admin" : "standard";
-            if (string.Equals(user.Role, "admin", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(targetRole, "admin", StringComparison.OrdinalIgnoreCase))
+            targetRole = AppConstants.UserRoles.ToDbValue(req.Role);
+            if (string.Equals(user.Role, AppConstants.UserRoles.Admin, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(targetRole, AppConstants.UserRoles.Admin, StringComparison.OrdinalIgnoreCase))
             {
                 int adminCount = await conn.ExecuteScalarAsync<int>(
-                    "SELECT COUNT(*) FROM Users WHERE LOWER(Role) = 'admin';"
+                    "SELECT COUNT(*) FROM Users WHERE LOWER(Role) = @adminRole;",
+                    new { adminRole = AppConstants.UserRoles.Admin }
                 );
                 if (adminCount <= 1)
                 {
@@ -403,16 +402,17 @@ public class UsersController : ControllerBase
         if (user == null)
             return NotFound(new { error = $"User #{id} not found." });
 
-        var currentUserIdStr = User.FindFirst("UserId")?.Value;
+        var currentUserIdStr = User.FindFirst(AppConstants.Auth.UserIdClaim)?.Value;
         if (long.TryParse(currentUserIdStr, out long currentUserId) && currentUserId == id)
         {
             return BadRequest(new { error = "You cannot delete your own account." });
         }
 
-        if (string.Equals(user.Role, "admin", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(user.Role, AppConstants.UserRoles.Admin, StringComparison.OrdinalIgnoreCase))
         {
             int adminCount = await conn.ExecuteScalarAsync<int>(
-                "SELECT COUNT(*) FROM Users WHERE LOWER(Role) = 'admin';"
+                "SELECT COUNT(*) FROM Users WHERE LOWER(Role) = @adminRole;",
+                new { adminRole = AppConstants.UserRoles.Admin }
             );
             if (adminCount <= 1)
             {
@@ -435,18 +435,18 @@ public class TracesController : ControllerBase
 
     public TracesController(IConfiguration config)
     {
-        _dbConn = config.GetConnectionString("DefaultConnection") ?? "Data Source=observability.db;";
+        _dbConn = config.GetConnectionString("DefaultConnection") ?? AppConstants.Database.DefaultConnectionString;
     }
 
     [HttpGet]
     public async Task<IActionResult> GetTraces(
         [FromQuery] string? service,
         [FromQuery] string? traceId,
-        [FromQuery] int minutes = 60,
-        [FromQuery] int limit = 100)
+        [FromQuery] int minutes = AppConstants.QueryDefaults.DefaultWindowMinutes,
+        [FromQuery] int limit = AppConstants.QueryDefaults.DefaultLimit)
     {
-        if (minutes <= 0) minutes = 60;
-        if (limit <= 0 || limit > 500) limit = 100;
+        if (minutes <= 0) minutes = AppConstants.QueryDefaults.DefaultWindowMinutes;
+        if (limit <= 0 || limit > AppConstants.QueryDefaults.MaxLimit) limit = AppConstants.QueryDefaults.DefaultLimit;
         var windowStart = DateTime.UtcNow.AddMinutes(-minutes).ToString("o");
 
         using var conn = new SqliteConnection(_dbConn);
@@ -489,7 +489,7 @@ public class LogsController : ControllerBase
 
     public LogsController(IConfiguration config)
     {
-        _dbConn = config.GetConnectionString("DefaultConnection") ?? "Data Source=observability.db;";
+        _dbConn = config.GetConnectionString("DefaultConnection") ?? AppConstants.Database.DefaultConnectionString;
     }
 
     [HttpGet]
@@ -498,11 +498,11 @@ public class LogsController : ControllerBase
         [FromQuery] string? severity,
         [FromQuery] string? traceId,
         [FromQuery] string? query,
-        [FromQuery] int minutes = 60,
-        [FromQuery] int limit = 100)
+        [FromQuery] int minutes = AppConstants.QueryDefaults.DefaultWindowMinutes,
+        [FromQuery] int limit = AppConstants.QueryDefaults.DefaultLimit)
     {
-        if (minutes <= 0) minutes = 60;
-        if (limit <= 0 || limit > 500) limit = 100;
+        if (minutes <= 0) minutes = AppConstants.QueryDefaults.DefaultWindowMinutes;
+        if (limit <= 0 || limit > AppConstants.QueryDefaults.MaxLimit) limit = AppConstants.QueryDefaults.DefaultLimit;
         var windowStart = DateTime.UtcNow.AddMinutes(-minutes).ToString("o");
 
         using var conn = new SqliteConnection(_dbConn);

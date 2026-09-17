@@ -4,6 +4,8 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using KestrelScope.Constants;
+using KestrelScope.Models;
 
 namespace KestrelScope.Tools;
 
@@ -21,7 +23,7 @@ public class SyntheticTelemetryGenerator
         for (int i = 0; i < count && !ct.IsCancellationRequested; i++)
         {
             double latency = 100 + rand.NextDouble() * 400;
-            long nowNano = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000;
+            long nowNano = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * TelemetryConstants.Conversion.NanoPerMilli;
 
             // 1. Emit Metric Payload
             var metricPayload = new
@@ -34,7 +36,7 @@ public class SyntheticTelemetryGenerator
                         {
                             attributes = new[]
                             {
-                                new { key = "service.name", value = new { stringValue = "order-processor-service" } }
+                                new { key = TelemetryConstants.OtlpAttributes.ServiceName, value = new { stringValue = TelemetryConstants.ServiceNames.OrderProcessorService } }
                             }
                         },
                         scopeMetrics = new[]
@@ -45,7 +47,7 @@ public class SyntheticTelemetryGenerator
                                 {
                                     new
                                     {
-                                        name = "http.server.duration",
+                                        name = TelemetryConstants.MetricNames.HttpServerRequestDuration,
                                         sum = new
                                         {
                                             dataPoints = new[]
@@ -56,7 +58,7 @@ public class SyntheticTelemetryGenerator
                                     },
                                     new
                                     {
-                                        name = "process.memory.usage",
+                                        name = TelemetryConstants.MetricNames.ProcessMemoryUsage,
                                         gauge = new
                                         {
                                             dataPoints = new[]
@@ -83,7 +85,7 @@ public class SyntheticTelemetryGenerator
             string traceId = Guid.NewGuid().ToString("N");
             string rootSpanId = Guid.NewGuid().ToString("N")[..16];
             string childSpanId = Guid.NewGuid().ToString("N")[..16];
-            long endNano = nowNano + (long)(latency * 1_000_000);
+            long endNano = nowNano + (long)(latency * TelemetryConstants.Conversion.NanoPerMilli);
 
             var tracePayload = new
             {
@@ -95,7 +97,7 @@ public class SyntheticTelemetryGenerator
                         {
                             attributes = new[]
                             {
-                                new { key = "service.name", value = new { stringValue = "order-processor-service" } }
+                                new { key = TelemetryConstants.OtlpAttributes.ServiceName, value = new { stringValue = TelemetryConstants.ServiceNames.OrderProcessorService } }
                             }
                         },
                         scopeSpans = new[]
@@ -109,10 +111,10 @@ public class SyntheticTelemetryGenerator
                                         traceId,
                                         spanId = rootSpanId,
                                         parentSpanId = (string?)null,
-                                        name = "POST /orders",
+                                        name = TelemetryConstants.SpanNames.CreateOrder,
                                         startTimeUnixNano = nowNano.ToString(),
                                         endTimeUnixNano = endNano.ToString(),
-                                        status = new { code = 1 }
+                                        status = new { code = (int)SpanStatusCode.Ok }
                                     },
                                     new
                                     {
@@ -120,9 +122,9 @@ public class SyntheticTelemetryGenerator
                                         spanId = childSpanId,
                                         parentSpanId = (string?)rootSpanId,
                                         name = "SELECT * FROM orders",
-                                        startTimeUnixNano = (nowNano + 10_000_000).ToString(),
-                                        endTimeUnixNano = (nowNano + 50_000_000).ToString(),
-                                        status = new { code = 1 }
+                                        startTimeUnixNano = (nowNano + 10 * TelemetryConstants.Conversion.NanoPerMilli).ToString(),
+                                        endTimeUnixNano = (nowNano + 50 * TelemetryConstants.Conversion.NanoPerMilli).ToString(),
+                                        status = new { code = (int)SpanStatusCode.Ok }
                                     }
                                 }
                             }

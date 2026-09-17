@@ -10,6 +10,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using KestrelScope.Constants;
 
 namespace KestrelScope.Services;
 
@@ -22,12 +23,12 @@ public class AlertRulerWorker : BackgroundService
 
     public AlertRulerWorker(IConfiguration config, HttpClient httpClient, ILogger<AlertRulerWorker> logger)
     {
-        _dbConn = config.GetConnectionString("DefaultConnection") ?? "Data Source=observability.db;";
+        _dbConn = config.GetConnectionString("DefaultConnection") ?? AppConstants.Database.DefaultConnectionString;
         _httpClient = httpClient;
         _logger = logger;
     }
 
-    public TimeSpan EvaluationInterval { get; set; } = TimeSpan.FromSeconds(60);
+    public TimeSpan EvaluationInterval { get; set; } = TimeSpan.FromSeconds(AppConstants.Alerts.DefaultEvaluationIntervalSeconds);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -36,7 +37,7 @@ public class AlertRulerWorker : BackgroundService
         // Allow web host to finish binding ports before first background evaluation
         try
         {
-            await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
+            await Task.Delay(TimeSpan.FromSeconds(AppConstants.Alerts.InitialDelaySeconds), stoppingToken);
         }
         catch (OperationCanceledException)
         {
@@ -126,7 +127,7 @@ public class AlertRulerWorker : BackgroundService
                     _logger.LogWarning("ALERT TRIGGERED [FIRING]: Rule '{Rule}' breached by {Service}. Avg Value: {Val:F2} > Threshold: {Threshold}",
                         rule.Name, service, avgValue, rule.Threshold);
 
-                    await DispatchWebhookAsync(rule, service, avgValue, "FIRING", ct);
+                    await DispatchWebhookAsync(rule, service, avgValue, AppConstants.Alerts.StateFiring, ct);
                 }
                 else
                 {
@@ -149,7 +150,7 @@ public class AlertRulerWorker : BackgroundService
 
                     if (resolvedRule != default)
                     {
-                        await DispatchWebhookAsync(resolvedRule, activeKey.ServiceName, 0.0, "RESOLVED", ct);
+                        await DispatchWebhookAsync(resolvedRule, activeKey.ServiceName, 0.0, AppConstants.Alerts.StateResolved, ct);
                     }
                 }
             }
@@ -166,7 +167,7 @@ public class AlertRulerWorker : BackgroundService
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(TimeSpan.FromSeconds(5)); // Resilient 5-second webhook timeout
+            cts.CancelAfter(TimeSpan.FromSeconds(AppConstants.Alerts.WebhookTimeoutSeconds)); // Resilient webhook timeout
 
             var payload = JsonSerializer.Serialize(new
             {

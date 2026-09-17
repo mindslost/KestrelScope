@@ -7,6 +7,7 @@ COPY KestrelScope.csproj ./
 RUN dotnet restore KestrelScope.csproj
 
 # Copy application source code and web assets
+COPY Constants/ ./Constants/
 COPY Controllers/ ./Controllers/
 COPY Models/ ./Models/
 COPY Services/ ./Services/

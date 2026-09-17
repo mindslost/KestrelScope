@@ -15,8 +15,8 @@ using Microsoft.Extensions.Hosting;
 var builder = WebApplication.CreateBuilder(args);
 
 // Configuration
-string serviceName = Environment.GetEnvironmentVariable("OTEL_SERVICE_NAME") ?? "order-service";
-string otlpEndpoint = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT") ?? "http://localhost:5000";
+string serviceName = Environment.GetEnvironmentVariable("OTEL_SERVICE_NAME") ?? ServiceConstants.DefaultServiceName;
+string otlpEndpoint = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT") ?? ServiceConstants.DefaultOtlpEndpoint;
 
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton(new TelemetryDispatcher(serviceName, otlpEndpoint));
@@ -40,43 +40,43 @@ app.MapPost("/api/orders", async (OrderRequest req) =>
     var sw = Stopwatch.StartNew();
     string traceId = Guid.NewGuid().ToString("N");
     string rootSpanId = Guid.NewGuid().ToString("N")[..16];
-    long startNano = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000;
+    long startNano = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * ServiceConstants.NanoPerMilli;
 
     // Simulate Step 1: Inventory Validation
     string invSpanId = Guid.NewGuid().ToString("N")[..16];
-    long invStart = startNano + 5_000_000;
+    long invStart = startNano + 5 * ServiceConstants.NanoPerMilli;
     await Task.Delay(15);
-    long invEnd = invStart + 15_000_000;
-    dispatcher.RecordSpan(traceId, invSpanId, rootSpanId, "InventoryService.ValidateStock", invStart, invEnd, 1);
+    long invEnd = invStart + 15 * ServiceConstants.NanoPerMilli;
+    dispatcher.RecordSpan(traceId, invSpanId, rootSpanId, ServiceConstants.Spans.ValidateStock, invStart, invEnd, ServiceConstants.StatusCodes.Ok);
 
     // Simulate Step 2: Payment Processing
     string paySpanId = Guid.NewGuid().ToString("N")[..16];
-    long payStart = invEnd + 5_000_000;
+    long payStart = invEnd + 5 * ServiceConstants.NanoPerMilli;
     await Task.Delay(40);
-    long payEnd = payStart + 40_000_000;
-    dispatcher.RecordSpan(traceId, paySpanId, rootSpanId, "PaymentGateway.ChargeCard", payStart, payEnd, 1);
+    long payEnd = payStart + 40 * ServiceConstants.NanoPerMilli;
+    dispatcher.RecordSpan(traceId, paySpanId, rootSpanId, ServiceConstants.Spans.ChargeCard, payStart, payEnd, ServiceConstants.StatusCodes.Ok);
 
     // Simulate Step 3: Database Persistence
     string dbSpanId = Guid.NewGuid().ToString("N")[..16];
-    long dbStart = payEnd + 5_000_000;
+    long dbStart = payEnd + 5 * ServiceConstants.NanoPerMilli;
     await Task.Delay(20);
-    long dbEnd = dbStart + 20_000_000;
-    dispatcher.RecordSpan(traceId, dbSpanId, rootSpanId, "OrderRepository.SaveOrder", dbStart, dbEnd, 1);
+    long dbEnd = dbStart + 20 * ServiceConstants.NanoPerMilli;
+    dispatcher.RecordSpan(traceId, dbSpanId, rootSpanId, ServiceConstants.Spans.SaveOrder, dbStart, dbEnd, ServiceConstants.StatusCodes.Ok);
 
     sw.Stop();
-    long endNano = dbEnd + 5_000_000;
-    dispatcher.RecordSpan(traceId, rootSpanId, null, "POST /api/orders", startNano, endNano, 1);
+    long endNano = dbEnd + 5 * ServiceConstants.NanoPerMilli;
+    dispatcher.RecordSpan(traceId, rootSpanId, null, ServiceConstants.Spans.CreateOrder, startNano, endNano, ServiceConstants.StatusCodes.Ok);
 
     var orderId = "ORD-" + Guid.NewGuid().ToString("N")[..8].ToUpper();
 
     // Correlated Structured Logs
-    dispatcher.RecordLog(traceId, invSpanId, "INFO", 9, $"Validating stock for customer {req.CustomerId}");
-    dispatcher.RecordLog(traceId, paySpanId, "INFO", 9, $"Payment card authorization approved for ${req.TotalAmount:F2}");
-    dispatcher.RecordLog(traceId, dbSpanId, "INFO", 9, $"Order {orderId} successfully persisted to database");
+    dispatcher.RecordLog(traceId, invSpanId, ServiceConstants.Severity.Info, ServiceConstants.Severity.InfoNumber, $"Validating stock for customer {req.CustomerId}");
+    dispatcher.RecordLog(traceId, paySpanId, ServiceConstants.Severity.Info, ServiceConstants.Severity.InfoNumber, $"Payment card authorization approved for ${req.TotalAmount:F2}");
+    dispatcher.RecordLog(traceId, dbSpanId, ServiceConstants.Severity.Info, ServiceConstants.Severity.InfoNumber, $"Order {orderId} successfully persisted to database");
 
     // Record Duration Metric
-    dispatcher.RecordMetric("http.server.request.duration", sw.Elapsed.TotalMilliseconds);
-    dispatcher.RecordMetric("orders.created.count", 1.0);
+    dispatcher.RecordMetric(ServiceConstants.Metrics.HttpServerRequestDuration, sw.Elapsed.TotalMilliseconds);
+    dispatcher.RecordMetric(ServiceConstants.Metrics.OrdersCreatedCount, 1.0);
 
     return Results.Created($"/api/orders/{orderId}", new
     {
@@ -94,20 +94,20 @@ app.MapGet("/api/orders/{id}", async (string id) =>
     var sw = Stopwatch.StartNew();
     string traceId = Guid.NewGuid().ToString("N");
     string rootSpanId = Guid.NewGuid().ToString("N")[..16];
-    long startNano = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000;
+    long startNano = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * ServiceConstants.NanoPerMilli;
 
     // Simulate repository query
     string dbSpanId = Guid.NewGuid().ToString("N")[..16];
-    long dbStart = startNano + 5_000_000;
+    long dbStart = startNano + 5 * ServiceConstants.NanoPerMilli;
     await Task.Delay(10);
-    long dbEnd = dbStart + 10_000_000;
-    dispatcher.RecordSpan(traceId, dbSpanId, rootSpanId, "OrderRepository.FindById", dbStart, dbEnd, 1);
+    long dbEnd = dbStart + 10 * ServiceConstants.NanoPerMilli;
+    dispatcher.RecordSpan(traceId, dbSpanId, rootSpanId, ServiceConstants.Spans.FindOrderById, dbStart, dbEnd, ServiceConstants.StatusCodes.Ok);
 
     sw.Stop();
-    long endNano = dbEnd + 2_000_000;
-    dispatcher.RecordSpan(traceId, rootSpanId, null, $"GET /api/orders/{id}", startNano, endNano, 1);
+    long endNano = dbEnd + 2 * ServiceConstants.NanoPerMilli;
+    dispatcher.RecordSpan(traceId, rootSpanId, null, $"GET /api/orders/{id}", startNano, endNano, ServiceConstants.StatusCodes.Ok);
 
-    dispatcher.RecordMetric("http.server.request.duration", sw.Elapsed.TotalMilliseconds);
+    dispatcher.RecordMetric(ServiceConstants.Metrics.HttpServerRequestDuration, sw.Elapsed.TotalMilliseconds);
 
     return Results.Ok(new
     {
@@ -123,26 +123,26 @@ app.MapPost("/api/orders/fail", async () =>
     var sw = Stopwatch.StartNew();
     string traceId = Guid.NewGuid().ToString("N");
     string rootSpanId = Guid.NewGuid().ToString("N")[..16];
-    long startNano = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000;
+    long startNano = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * ServiceConstants.NanoPerMilli;
 
     // Simulate failing payment gateway
     string paySpanId = Guid.NewGuid().ToString("N")[..16];
-    long payStart = startNano + 10_000_000;
+    long payStart = startNano + 10 * ServiceConstants.NanoPerMilli;
     await Task.Delay(120);
-    long payEnd = payStart + 120_000_000;
-    dispatcher.RecordSpan(traceId, paySpanId, rootSpanId, "PaymentGateway.ChargeCard", payStart, payEnd, 2); // 2 = Error
+    long payEnd = payStart + 120 * ServiceConstants.NanoPerMilli;
+    dispatcher.RecordSpan(traceId, paySpanId, rootSpanId, ServiceConstants.Spans.ChargeCard, payStart, payEnd, ServiceConstants.StatusCodes.Error);
 
     sw.Stop();
     // High simulated latency to breach thresholds (e.g. 550ms)
-    long endNano = startNano + 550_000_000;
-    dispatcher.RecordSpan(traceId, rootSpanId, null, "POST /api/orders/fail", startNano, endNano, 2);
+    long endNano = startNano + 550 * ServiceConstants.NanoPerMilli;
+    dispatcher.RecordSpan(traceId, rootSpanId, null, ServiceConstants.Spans.FailOrder, startNano, endNano, ServiceConstants.StatusCodes.Error);
 
-    dispatcher.RecordMetric("http.server.request.duration", 550.0);
-    dispatcher.RecordMetric("orders.failed.count", 1.0);
+    dispatcher.RecordMetric(ServiceConstants.Metrics.HttpServerRequestDuration, 550.0);
+    dispatcher.RecordMetric(ServiceConstants.Metrics.OrdersFailedCount, 1.0);
 
     // Correlated Warning and Error Logs
-    dispatcher.RecordLog(traceId, paySpanId, "WARN", 13, "Payment processing latency exceeding 100ms threshold");
-    dispatcher.RecordLog(traceId, rootSpanId, "ERROR", 17, "Payment declined: Card issuer rejected transaction. Order aborted.");
+    dispatcher.RecordLog(traceId, paySpanId, ServiceConstants.Severity.Warn, ServiceConstants.Severity.WarnNumber, "Payment processing latency exceeding 100ms threshold");
+    dispatcher.RecordLog(traceId, rootSpanId, ServiceConstants.Severity.Error, ServiceConstants.Severity.ErrorNumber, "Payment declined: Card issuer rejected transaction. Order aborted.");
 
     return Results.Problem(
         detail: "Payment declined: Card issuer rejected transaction.",
@@ -158,7 +158,7 @@ app.MapPost("/api/telemetry/flush", async () =>
     return Results.Ok(new { status = "flushed" });
 });
 
-string bindUrl = Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "http://0.0.0.0:8080";
+string bindUrl = Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? ServiceConstants.DefaultBindUrl;
 app.Run(bindUrl);
 
 #region Telemetry Dispatcher Background Service
@@ -400,7 +400,7 @@ public class SimulatedTrafficWorker : BackgroundService
                 bool isError = _rand.Next(0, 12) == 0;
                 string traceId = Guid.NewGuid().ToString("N");
                 string rootSpanId = Guid.NewGuid().ToString("N")[..16];
-                long startNano = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000;
+                long startNano = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * ServiceConstants.NanoPerMilli;
                 string orderId = $"ORD-{orderSeq}";
 
                 if (!isError)
@@ -410,44 +410,44 @@ public class SimulatedTrafficWorker : BackgroundService
                     string paySpanId = Guid.NewGuid().ToString("N")[..16];
                     string dbSpanId = Guid.NewGuid().ToString("N")[..16];
 
-                    long invStart = startNano + 2_000_000;
-                    long invEnd = invStart + 15_000_000;
-                    _dispatcher.RecordSpan(traceId, invSpanId, rootSpanId, "InventoryService.ValidateStock", invStart, invEnd, 1);
+                    long invStart = startNano + 2 * ServiceConstants.NanoPerMilli;
+                    long invEnd = invStart + 15 * ServiceConstants.NanoPerMilli;
+                    _dispatcher.RecordSpan(traceId, invSpanId, rootSpanId, ServiceConstants.Spans.ValidateStock, invStart, invEnd, ServiceConstants.StatusCodes.Ok);
 
-                    long payStart = invEnd + 3_000_000;
-                    long payEnd = payStart + 35_000_000;
-                    _dispatcher.RecordSpan(traceId, paySpanId, rootSpanId, "PaymentGateway.ChargeCard", payStart, payEnd, 1);
+                    long payStart = invEnd + 3 * ServiceConstants.NanoPerMilli;
+                    long payEnd = payStart + 35 * ServiceConstants.NanoPerMilli;
+                    _dispatcher.RecordSpan(traceId, paySpanId, rootSpanId, ServiceConstants.Spans.ChargeCard, payStart, payEnd, ServiceConstants.StatusCodes.Ok);
 
-                    long dbStart = payEnd + 2_000_000;
-                    long dbEnd = dbStart + 20_000_000;
-                    _dispatcher.RecordSpan(traceId, dbSpanId, rootSpanId, "OrderRepository.SaveOrder", dbStart, dbEnd, 1);
+                    long dbStart = payEnd + 2 * ServiceConstants.NanoPerMilli;
+                    long dbEnd = dbStart + 20 * ServiceConstants.NanoPerMilli;
+                    _dispatcher.RecordSpan(traceId, dbSpanId, rootSpanId, ServiceConstants.Spans.SaveOrder, dbStart, dbEnd, ServiceConstants.StatusCodes.Ok);
 
-                    long endNano = dbEnd + 2_000_000;
-                    _dispatcher.RecordSpan(traceId, rootSpanId, null, "POST /api/orders", startNano, endNano, 1);
+                    long endNano = dbEnd + 2 * ServiceConstants.NanoPerMilli;
+                    _dispatcher.RecordSpan(traceId, rootSpanId, null, ServiceConstants.Spans.CreateOrder, startNano, endNano, ServiceConstants.StatusCodes.Ok);
 
-                    _dispatcher.RecordLog(traceId, invSpanId, "INFO", 9, $"Inventory reservation confirmed for order {orderId}");
-                    _dispatcher.RecordLog(traceId, paySpanId, "INFO", 9, $"Card payment authorized for ${25 + _rand.NextDouble() * 150:F2}");
-                    _dispatcher.RecordLog(traceId, dbSpanId, "INFO", 9, $"Order {orderId} committed to database");
+                    _dispatcher.RecordLog(traceId, invSpanId, ServiceConstants.Severity.Info, ServiceConstants.Severity.InfoNumber, $"Inventory reservation confirmed for order {orderId}");
+                    _dispatcher.RecordLog(traceId, paySpanId, ServiceConstants.Severity.Info, ServiceConstants.Severity.InfoNumber, $"Card payment authorized for ${25 + _rand.NextDouble() * 150:F2}");
+                    _dispatcher.RecordLog(traceId, dbSpanId, ServiceConstants.Severity.Info, ServiceConstants.Severity.InfoNumber, $"Order {orderId} committed to database");
 
-                    _dispatcher.RecordMetric("http.server.request.duration", duration);
-                    _dispatcher.RecordMetric("orders.created.count", 1.0);
+                    _dispatcher.RecordMetric(ServiceConstants.Metrics.HttpServerRequestDuration, duration);
+                    _dispatcher.RecordMetric(ServiceConstants.Metrics.OrdersCreatedCount, 1.0);
                 }
                 else
                 {
                     double breachDuration = 350 + _rand.NextDouble() * 200;
                     string paySpanId = Guid.NewGuid().ToString("N")[..16];
-                    long payStart = startNano + 5_000_000;
-                    long payEnd = startNano + 320_000_000;
-                    _dispatcher.RecordSpan(traceId, paySpanId, rootSpanId, "PaymentGateway.ChargeCard", payStart, payEnd, 2);
+                    long payStart = startNano + 5 * ServiceConstants.NanoPerMilli;
+                    long payEnd = startNano + 320 * ServiceConstants.NanoPerMilli;
+                    _dispatcher.RecordSpan(traceId, paySpanId, rootSpanId, ServiceConstants.Spans.ChargeCard, payStart, payEnd, ServiceConstants.StatusCodes.Error);
 
-                    long endNano = startNano + (long)(breachDuration * 1_000_000);
-                    _dispatcher.RecordSpan(traceId, rootSpanId, null, "POST /api/orders/fail", startNano, endNano, 2);
+                    long endNano = startNano + (long)(breachDuration * ServiceConstants.NanoPerMilli);
+                    _dispatcher.RecordSpan(traceId, rootSpanId, null, ServiceConstants.Spans.FailOrder, startNano, endNano, ServiceConstants.StatusCodes.Error);
 
-                    _dispatcher.RecordLog(traceId, paySpanId, "WARN", 13, $"Payment gateway timeout on transaction {orderId} ({breachDuration:F1}ms)");
-                    _dispatcher.RecordLog(traceId, rootSpanId, "ERROR", 17, $"Order {orderId} failed: upstream payment provider rejected transaction");
+                    _dispatcher.RecordLog(traceId, paySpanId, ServiceConstants.Severity.Warn, ServiceConstants.Severity.WarnNumber, $"Payment gateway timeout on transaction {orderId} ({breachDuration:F1}ms)");
+                    _dispatcher.RecordLog(traceId, rootSpanId, ServiceConstants.Severity.Error, ServiceConstants.Severity.ErrorNumber, $"Order {orderId} failed: upstream payment provider rejected transaction");
 
-                    _dispatcher.RecordMetric("http.server.request.duration", breachDuration);
-                    _dispatcher.RecordMetric("orders.failed.count", 1.0);
+                    _dispatcher.RecordMetric(ServiceConstants.Metrics.HttpServerRequestDuration, breachDuration);
+                    _dispatcher.RecordMetric(ServiceConstants.Metrics.OrdersFailedCount, 1.0);
                 }
             }
             catch (Exception ex)
@@ -462,3 +462,44 @@ public class SimulatedTrafficWorker : BackgroundService
 #endregion
 
 public record OrderRequest(string CustomerId, decimal TotalAmount);
+
+public static class ServiceConstants
+{
+    public const string DefaultServiceName = "order-service";
+    public const string DefaultOtlpEndpoint = "http://localhost:5000";
+    public const string DefaultBindUrl = "http://0.0.0.0:8080";
+    public const long NanoPerMilli = 1_000_000L;
+
+    public static class Metrics
+    {
+        public const string HttpServerRequestDuration = "http.server.request.duration";
+        public const string OrdersCreatedCount = "orders.created.count";
+        public const string OrdersFailedCount = "orders.failed.count";
+    }
+
+    public static class Spans
+    {
+        public const string CreateOrder = "POST /api/orders";
+        public const string ValidateStock = "InventoryService.ValidateStock";
+        public const string ChargeCard = "PaymentGateway.ChargeCard";
+        public const string SaveOrder = "OrderRepository.SaveOrder";
+        public const string FindOrderById = "OrderRepository.FindById";
+        public const string FailOrder = "POST /api/orders/fail";
+    }
+
+    public static class StatusCodes
+    {
+        public const int Ok = 1;
+        public const int Error = 2;
+    }
+
+    public static class Severity
+    {
+        public const string Info = "INFO";
+        public const int InfoNumber = 9;
+        public const string Warn = "WARN";
+        public const int WarnNumber = 13;
+        public const string Error = "ERROR";
+        public const int ErrorNumber = 17;
+    }
+}
