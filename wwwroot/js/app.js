@@ -1802,6 +1802,35 @@ async function initFlowMap() {
     }
   }
 
+  function getSpanStatusBadge(statusCode) {
+    const s = String(statusCode || '').trim();
+    if (s === 'Error' || s === '2' || s === '500') {
+      return '<span class="badge badge-error">Error</span>';
+    }
+    if (s === '404' || s === 'Warn' || s === 'Warning') {
+      return '<span class="badge badge-warn">Warn</span>';
+    }
+    if (s === 'Unset' || s === '0') {
+      return '<span class="badge badge-gray">Unset</span>';
+    }
+    if (s === 'Ok' || s === '1' || s === '200') {
+      return '<span class="badge badge-ok">OK</span>';
+    }
+    if (s) {
+      return `<span class="badge badge-gray">${escapeHtml(s)}</span>`;
+    }
+    return '<span class="badge badge-ok">OK</span>';
+  }
+
+  function getLogSeverityBadge(severityText) {
+    const sev = (severityText || 'INFO').toUpperCase();
+    let badgeClass = 'log-badge-info';
+    if (sev === 'ERROR' || sev === 'FATAL') badgeClass = 'log-badge-error';
+    else if (sev === 'WARN' || sev === 'WARNING') badgeClass = 'log-badge-warn';
+    else if (sev === 'DEBUG' || sev === 'TRACE') badgeClass = 'log-badge-debug';
+    return `<span class="log-badge ${badgeClass}">${escapeHtml(sev)}</span>`;
+  }
+
   // --- Node Drawer Detail Loading ---
   async function openNodeDrawer(node) {
     if (!nodeDrawer) return;
@@ -1849,10 +1878,10 @@ async function initFlowMap() {
           } else {
             tracesTbody.innerHTML = details.recentTraces.map(tr => `
               <tr>
-                <td style="font-weight:600; color:#fff;">${escapeHtml(tr.spanName)}</td>
-                <td>${tr.durationMs.toFixed(1)} ms</td>
-                <td><span class="status-badge ${tr.statusCode === 'Error' ? 'status-error' : 'status-ok'}">${escapeHtml(tr.statusCode)}</span></td>
-                <td><a href="/traces.html?traceId=${encodeURIComponent(tr.traceId)}" class="fui-btn fui-btn-subtle" style="padding:2px 6px; font-size:11px;">View</a></td>
+                <td style="font-weight:600; color:#fff; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(tr.spanName)}">${escapeHtml(tr.spanName)}</td>
+                <td style="white-space:nowrap;">${tr.durationMs.toFixed(1)} ms</td>
+                <td style="white-space:nowrap;">${getSpanStatusBadge(tr.statusCode)}</td>
+                <td style="white-space:nowrap;"><a href="/traces.html?traceId=${encodeURIComponent(tr.traceId)}" class="fui-btn fui-btn-subtle" style="padding:2px 8px; font-size:11px;">View</a></td>
               </tr>
             `).join('');
           }
@@ -1866,9 +1895,9 @@ async function initFlowMap() {
           } else {
             logsTbody.innerHTML = details.recentLogs.map(lg => `
               <tr>
-                <td><span class="severity-badge sev-${(lg.severityText || 'info').toLowerCase()}">${escapeHtml(lg.severityText || 'INFO')}</span></td>
-                <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(lg.body)}</td>
-                <td style="color:#707070; font-size:10px;">${new Date(lg.timestamp).toLocaleTimeString()}</td>
+                <td style="white-space:nowrap;">${getLogSeverityBadge(lg.severityText)}</td>
+                <td style="max-width:210px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(lg.body)}">${escapeHtml(lg.body)}</td>
+                <td style="color:#707070; font-size:10px; white-space:nowrap;">${new Date(lg.timestamp).toLocaleTimeString()}</td>
               </tr>
             `).join('');
           }

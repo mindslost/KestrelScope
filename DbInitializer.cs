@@ -269,7 +269,8 @@ public static class DbInitializer
                 var pStatus = insertTraceCmd.Parameters.Add("@status", SqliteType.Text);
                 var pTime = insertTraceCmd.Parameters.Add("@time", SqliteType.Text);
 
-                string okStatusCode = ((int)SpanStatusCode.Ok).ToString();
+                string okStatusCode = TelemetryConstants.SpanStatusNames.Ok;
+                string errorStatusCode = TelemetryConstants.SpanStatusNames.Error;
                 int[] traceOffsets = [28, 20, 14, 8, 3, 1];
                 foreach (int off in traceOffsets)
                 {
@@ -306,6 +307,7 @@ public static class DbInitializer
                 int[] multiTraceOffsets = [25, 18, 12, 6, 2];
                 foreach (int off in multiTraceOffsets)
                 {
+                    bool isErr = (off == 12 || off == 2);
                     string tId = Guid.NewGuid().ToString("N");
                     string webId = Guid.NewGuid().ToString("N")[..16];
                     string ecomId = Guid.NewGuid().ToString("N")[..16];
@@ -318,13 +320,13 @@ public static class DbInitializer
                     // 1. Web Tier (Root)
                     pTrace.Value = tId; pSpan.Value = webId; pParent.Value = DBNull.Value;
                     pService.Value = TelemetryConstants.ServiceNames.WebTierServices; pName.Value = "GET /checkout";
-                    pDuration.Value = 95.0; pStatus.Value = okStatusCode; pTime.Value = time;
+                    pDuration.Value = 95.0; pStatus.Value = isErr ? errorStatusCode : okStatusCode; pTime.Value = time;
                     insertTraceCmd.ExecuteNonQuery();
 
                     // 2. ECommerce Services (Child of Web Tier)
                     pSpan.Value = ecomId; pParent.Value = webId;
                     pService.Value = TelemetryConstants.ServiceNames.ECommerceServices; pName.Value = "POST /api/cart/process";
-                    pDuration.Value = 42.0; pStatus.Value = okStatusCode;
+                    pDuration.Value = isErr ? 142.0 : 42.0; pStatus.Value = isErr ? errorStatusCode : okStatusCode;
                     insertTraceCmd.ExecuteNonQuery();
 
                     // 3. Inventory Services (Child of ECommerce)
@@ -342,7 +344,7 @@ public static class DbInitializer
                     // 5. Order Processing Services (Child of ECommerce)
                     pSpan.Value = orderProcId; pParent.Value = ecomId;
                     pService.Value = TelemetryConstants.ServiceNames.OrderProcessingServices; pName.Value = "OrderProcessor.HandleQueue";
-                    pDuration.Value = 85.0; pStatus.Value = okStatusCode;
+                    pDuration.Value = isErr ? 185.0 : 85.0; pStatus.Value = isErr ? errorStatusCode : okStatusCode;
                     insertTraceCmd.ExecuteNonQuery();
 
                     // 6. Customer Survey Services (Child of Order Processing)
@@ -408,9 +410,11 @@ public static class DbInitializer
                 var multiServiceLogs = new (string svc, int offsetMin, string sevText, int sevNum, string body)[]
                 {
                     (TelemetryConstants.ServiceNames.ECommerceServices, 25, TelemetryConstants.SeverityText.Info, (int)OtelSeverity.Info, "ECommerce cluster node 1 active; transaction pool synchronized."),
+                    (TelemetryConstants.ServiceNames.ECommerceServices, 2, TelemetryConstants.SeverityText.Error, (int)OtelSeverity.Error, "Transaction timeout handling payment gateway callback for checkout."),
                     (TelemetryConstants.ServiceNames.InventoryServices, 20, TelemetryConstants.SeverityText.Info, (int)OtelSeverity.Info, "Inventory-MySQL master read replica healthy. Cache hit ratio 99.1%."),
                     (TelemetryConstants.ServiceNames.AddressServices, 18, TelemetryConstants.SeverityText.Info, (int)OtelSeverity.Info, "Postal code validation cache warmed."),
                     (TelemetryConstants.ServiceNames.OrderProcessingServices, 14, TelemetryConstants.SeverityText.Info, (int)OtelSeverity.Info, "ActiveMQ-OrderQueue listener connected on channel 1."),
+                    (TelemetryConstants.ServiceNames.OrderProcessingServices, 12, TelemetryConstants.SeverityText.Warn, (int)OtelSeverity.Warn, "High queue consumer lag detected on ActiveMQ-OrderQueue channel."),
                     (TelemetryConstants.ServiceNames.CustomerSurveyServices, 10, TelemetryConstants.SeverityText.Info, (int)OtelSeverity.Info, "Survey dispatch batch queue idle.")
                 };
 

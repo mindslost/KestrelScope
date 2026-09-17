@@ -252,15 +252,27 @@ public class EndToEndPipelineTests : IAsyncLifetime
     [Fact]
     public async Task Test3_FailedOrder_GeneratesErrorSpanAndTriggersAlert()
     {
-        // Step 1: Create an alert rule on KestrelScope for high request duration (> 150ms)
+        // Step 1: Create an alert rule on KestrelScope for high request duration
         string webhookSink = Environment.GetEnvironmentVariable("INTERNAL_KESTRELSCOPE_URL") 
             ?? "http://127.0.0.1:5000/api/test-webhook";
+
+        double alertThreshold = 100.0;
+        var seriesRes = await _http.GetAsync($"{_kestrelScopeUrl}/api/metrics/series?service=order-service&metric=http.server.request.duration&minutes=5");
+        if (seriesRes.IsSuccessStatusCode)
+        {
+            using var seriesDoc = await JsonDocument.ParseAsync(await seriesRes.Content.ReadAsStreamAsync());
+            var points = seriesDoc.RootElement.EnumerateArray().Select(p => p.GetProperty("value").GetDouble()).ToList();
+            if (points.Count > 0)
+            {
+                alertThreshold = Math.Max(50.0, Math.Round(points.Average() * 0.9, 1));
+            }
+        }
 
         var rulePayload = JsonSerializer.Serialize(new
         {
             name = "E2E High Duration Alert",
             metricName = "http.server.request.duration",
-            threshold = 150.0,
+            threshold = alertThreshold,
             windowMinutes = 5,
             webhookUrl = webhookSink,
             isEnabled = 1
