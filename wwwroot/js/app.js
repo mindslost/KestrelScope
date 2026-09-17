@@ -209,17 +209,55 @@ async function initDashboard() {
         return;
       }
 
-      // Format time labels based on the selected window
-      const labels = series.map(pt => {
+      // Uniformly bucket samples across the full selected time window [now - minutes, now]
+      // so the chart's X-axis always accurately covers the entire requested time window.
+      const now = Date.now();
+      const startTime = now - minutes * 60 * 1000;
+      const bucketCount = minutes <= 15 ? 30 : (minutes <= 60 ? 60 : 48);
+      const bucketDuration = (now - startTime) / bucketCount;
+
+      const buckets = [];
+      for (let i = 0; i < bucketCount; i++) {
+        const t = new Date(startTime + (i + 0.5) * bucketDuration);
+        buckets.push({
+          time: t,
+          label: formatDate(t, minutes),
+          values: []
+        });
+      }
+
+      // Distribute series samples into buckets
+      series.forEach(pt => {
         let d = new Date(pt.timestamp);
         if (isNaN(d.getTime())) {
           const cleaned = pt.timestamp.replace(/(\.\d{3})\d+Z$/, '$1Z');
           d = new Date(cleaned);
         }
-        return formatDate(d, minutes);
+        const timeMs = d.getTime();
+        if (timeMs >= startTime && timeMs <= now) {
+          const idx = Math.min(bucketCount - 1, Math.max(0, Math.floor((timeMs - startTime) / bucketDuration)));
+          buckets[idx].values.push(pt.value);
+        }
       });
 
-      const values = series.map(pt => pt.value);
+      let labels = buckets.map(b => b.label);
+      let values = buckets.map(b => b.values.length > 0
+        ? Math.round((b.values.reduce((sum, v) => sum + v, 0) / b.values.length) * 100) / 100
+        : null
+      );
+
+      // Fallback: If no samples fell inside the window buckets, use raw points
+      if (values.every(v => v === null)) {
+        labels = series.map(pt => {
+          let d = new Date(pt.timestamp);
+          if (isNaN(d.getTime())) {
+            const cleaned = pt.timestamp.replace(/(\.\d{3})\d+Z$/, '$1Z');
+            d = new Date(cleaned);
+          }
+          return formatDate(d, minutes);
+        });
+        values = series.map(pt => pt.value);
+      }
 
       renderChart(labels, values, metric);
     } catch (err) {
@@ -232,7 +270,7 @@ async function initDashboard() {
       return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
              d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
-    if (minutes > 15) {
+    if (minutes >= 60) {
       return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -251,6 +289,7 @@ async function initDashboard() {
       metricsChart.data.labels = labels;
       metricsChart.data.datasets[0].data = values;
       metricsChart.data.datasets[0].label = metricName;
+      metricsChart.data.datasets[0].spanGaps = true;
       metricsChart.update();
       return;
     }
@@ -262,6 +301,7 @@ async function initDashboard() {
         datasets: [{
           label: metricName,
           data: values,
+          spanGaps: true,
           borderColor: '#2886de',
           borderWidth: 2,
           backgroundColor: gradient,
@@ -297,6 +337,7 @@ async function initDashboard() {
             },
             callbacks: {
               label: function(item) {
+                if (item.raw === null || item.raw === undefined) return '';
                 const val = typeof item.raw === 'number' ? item.raw.toFixed(2) : item.raw;
                 return `${item.dataset.label}: ${val}`;
               }

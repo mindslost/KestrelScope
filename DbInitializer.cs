@@ -125,18 +125,39 @@ public static class DbInitializer
             }
         }
 
-        // Seed initial telemetry if MetricSamples table is empty
-        // Seed baseline telemetry if no samples exist within the last 24 hours
+        // Seed baseline telemetry if no samples exist within the last 15 minutes
         using (var metricsCountCmd = connection.CreateCommand())
         {
             metricsCountCmd.CommandText = "SELECT COUNT(*) FROM MetricSamples WHERE Timestamp >= @since;";
-            metricsCountCmd.Parameters.AddWithValue("@since", DateTime.UtcNow.AddHours(-24).ToString("o"));
+            metricsCountCmd.Parameters.AddWithValue("@since", DateTime.UtcNow.AddMinutes(-15).ToString("o"));
             long count = (long)(metricsCountCmd.ExecuteScalar() ?? 0L);
             if (count == 0)
             {
                 var rand = new Random(42);
                 var now = DateTime.UtcNow;
-                int[] minuteOffsets = [1400, 1200, 1000, 800, 600, 450, 300, 200, 120, 80, 50, 40, 30, 20, 14, 12, 10, 8, 6, 4, 3, 2, 1, 0];
+
+                var minuteOffsets = new List<int>();
+                // Last 1 hour: dense sampling across the entire 60 minutes
+                // (Offsets 4, 2, 0 in the last 5 minutes to keep alert threshold testing robust)
+                for (int m = 0; m <= 60; m++)
+                {
+                    if (m <= 5)
+                    {
+                        if (m % 2 == 0) minuteOffsets.Add(m); // 0, 2, 4
+                    }
+                    else if (m <= 20)
+                    {
+                        if (m % 2 == 0) minuteOffsets.Add(m); // 6, 8, 10, 12, 14, 16, 18, 20
+                    }
+                    else
+                    {
+                        if (m % 5 == 0) minuteOffsets.Add(m); // 25, 30, 35, 40, 45, 50, 55, 60
+                    }
+                }
+                // 1 hour to 6 hours
+                for (int m = 75; m <= 360; m += 15) minuteOffsets.Add(m);
+                // 6 hours to 24 hours
+                for (int m = 405; m <= 1440; m += 45) minuteOffsets.Add(m);
 
                 using var trans = connection.BeginTransaction();
                 using var insertSampleCmd = connection.CreateCommand();
@@ -157,6 +178,8 @@ public static class DbInitializer
                     var sampleTime = now.AddMinutes(-off).ToString("o");
                     double latencyVal = 65 + 30 * Math.Sin(off / 30.0) + rand.NextDouble() * 25;
                     double ordersVal = 1 + rand.Next(0, 3);
+                    double memoryVal = 185 + 25 * Math.Cos(off / 60.0) + rand.NextDouble() * 15;
+                    double failedOrdersVal = (off % 12 == 0) ? 1.0 : 0.0;
 
                     pMetric.Value = "http.server.request.duration";
                     pVal.Value = Math.Round(latencyVal, 2);
@@ -167,18 +190,28 @@ public static class DbInitializer
                     pVal.Value = ordersVal;
                     pTime.Value = sampleTime;
                     insertSampleCmd.ExecuteNonQuery();
+
+                    pMetric.Value = "orders.failed.count";
+                    pVal.Value = failedOrdersVal;
+                    pTime.Value = sampleTime;
+                    insertSampleCmd.ExecuteNonQuery();
+
+                    pMetric.Value = "process.memory.usage";
+                    pVal.Value = Math.Round(memoryVal, 2);
+                    pTime.Value = sampleTime;
+                    insertSampleCmd.ExecuteNonQuery();
                 }
 
                 trans.Commit();
-                Console.WriteLine("[KestrelScope] Seeded baseline 24-hour telemetry samples for 'order-service'.");
+                Console.WriteLine("[KestrelScope] Seeded baseline telemetry samples spanning 24 hours for 'order-service'.");
             }
         }
 
-        // Seed baseline traces if Traces table has no recent spans
+        // Seed baseline traces if Traces table has no recent spans in the last 30 minutes
         using (var tracesCountCmd = connection.CreateCommand())
         {
             tracesCountCmd.CommandText = "SELECT COUNT(*) FROM Traces WHERE Timestamp >= @since;";
-            tracesCountCmd.Parameters.AddWithValue("@since", DateTime.UtcNow.AddHours(-24).ToString("o"));
+            tracesCountCmd.Parameters.AddWithValue("@since", DateTime.UtcNow.AddMinutes(-30).ToString("o"));
             long count = (long)(tracesCountCmd.ExecuteScalar() ?? 0L);
             if (count == 0)
             {
@@ -199,7 +232,7 @@ public static class DbInitializer
                 var pStatus = insertTraceCmd.Parameters.Add("@status", SqliteType.Text);
                 var pTime = insertTraceCmd.Parameters.Add("@time", SqliteType.Text);
 
-                int[] traceOffsets = [25, 12, 2];
+                int[] traceOffsets = [28, 20, 14, 8, 3, 1];
                 foreach (int off in traceOffsets)
                 {
                     string tId = Guid.NewGuid().ToString("N");
@@ -236,12 +269,11 @@ public static class DbInitializer
             }
         }
 
-        // Seed baseline logs if Logs table has no recent entries
+        // Seed baseline logs if Logs table has no recent entries in the last 30 minutes
         using (var logsCountCmd = connection.CreateCommand())
         {
-            logsCountCmd.CommandText = "SELECT COUNT(*) FROM Logs;";
             logsCountCmd.CommandText = "SELECT COUNT(*) FROM Logs WHERE Timestamp >= @since;";
-            logsCountCmd.Parameters.AddWithValue("@since", DateTime.UtcNow.AddHours(-24).ToString("o"));
+            logsCountCmd.Parameters.AddWithValue("@since", DateTime.UtcNow.AddMinutes(-30).ToString("o"));
             long count = (long)(logsCountCmd.ExecuteScalar() ?? 0L);
             if (count == 0)
             {
@@ -264,13 +296,13 @@ public static class DbInitializer
                 {
                     (45, "INFO", 9, "Application host started successfully in production environment.", null, null),
                     (30, "INFO", 9, "Connection pool initialized to internal storage engine.", null, null),
+                    (20, "INFO", 9, "Distributed tracing tracer provider registered for order-service.", null, null),
                     (15, "WARN", 13, "Degraded query performance detected on cold cache access.", null, null),
-                    (5, "INFO", 9, "Batch telemetry sync completed for order-processor-service.", null, null),
-                    (5, "INFO", 9, "Batch telemetry sync completed for order-service.", null, null),
-                    (1, "INFO", 9, "System health check status reported OK.", null, null)
+                    (8, "INFO", 9, "Batch telemetry sync completed for order-service.", null, null),
+                    (3, "INFO", 9, "System health check status reported OK.", null, null),
+                    (1, "INFO", 9, "Periodic order queue synchronization completed successfully.", null, null)
                 };
 
-                pService.Value = "order-processor-service";
                 pService.Value = "order-service";
                 pAttrs.Value = "{}";
 
