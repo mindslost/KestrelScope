@@ -1176,11 +1176,60 @@ async function initFlowMap() {
   const timeWindowSelect = document.getElementById('timeWindowSelect');
   const autoRefreshToggle = document.getElementById('autoRefreshToggle');
   const btnRefresh = document.getElementById('btnRefreshFlowMap');
+  const btnResetPositions = document.getElementById('btnResetPositions');
   const btnResetLayout = document.getElementById('btnResetLayout');
   const btnZoomIn = document.getElementById('btnZoomIn');
   const btnZoomOut = document.getElementById('btnZoomOut');
   const nodeDrawer = document.getElementById('nodeDrawer');
   const btnDrawerClose = document.getElementById('btnDrawerClose');
+
+  const LAYOUT_CACHE_KEY_PREFIX = 'kestrelscope_flowmap_layout_';
+
+  function getLayoutCacheKey() {
+    const app = (appSelect ? appSelect.value : 'ECommerce') || 'ECommerce';
+    return `${LAYOUT_CACHE_KEY_PREFIX}${app}`;
+  }
+
+  function saveNodeLayout() {
+    if (!flowMapState.data || !Array.isArray(flowMapState.data.nodes)) return;
+    const cacheKey = getLayoutCacheKey();
+    const layout = {};
+    flowMapState.data.nodes.forEach(n => {
+      layout[n.id] = { x: n.x, y: n.y };
+    });
+    try {
+      sessionStorage.setItem(cacheKey, JSON.stringify(layout));
+      localStorage.setItem(cacheKey, JSON.stringify(layout));
+    } catch (e) {
+      console.warn('Failed to save node layout to session cache', e);
+    }
+    updateResetButtonState();
+  }
+
+  function getSavedNodeLayout() {
+    const cacheKey = getLayoutCacheKey();
+    try {
+      const raw = sessionStorage.getItem(cacheKey) || localStorage.getItem(cacheKey);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function clearSavedNodeLayout() {
+    const cacheKey = getLayoutCacheKey();
+    try {
+      sessionStorage.removeItem(cacheKey);
+      localStorage.removeItem(cacheKey);
+    } catch (e) {}
+    updateResetButtonState();
+  }
+
+  function updateResetButtonState() {
+    if (!btnResetPositions) return;
+    const saved = getSavedNodeLayout();
+    btnResetPositions.style.display = (saved && Object.keys(saved).length > 0) ? 'inline-flex' : 'none';
+  }
 
   function updateViewport() {
     viewport.setAttribute('transform', `translate(${flowMapState.panX}, ${flowMapState.panY}) scale(${flowMapState.zoom})`);
@@ -1238,7 +1287,10 @@ async function initFlowMap() {
       flowMapState.isPanning = false;
       svg.classList.remove('grabbing');
     }
-    flowMapState.draggedNode = null;
+    if (flowMapState.draggedNode) {
+      saveNodeLayout();
+      flowMapState.draggedNode = null;
+    }
   });
 
   svg.addEventListener('wheel', (e) => {
@@ -1269,6 +1321,13 @@ async function initFlowMap() {
     btnZoomOut.addEventListener('click', () => {
       flowMapState.zoom = Math.max(0.4, flowMapState.zoom / 1.15);
       updateViewport();
+    });
+  }
+
+  if (btnResetPositions) {
+    btnResetPositions.addEventListener('click', () => {
+      clearSavedNodeLayout();
+      loadFlowMap();
     });
   }
 
@@ -1910,6 +1969,10 @@ async function initFlowMap() {
 
   // --- Main Data Loading ---
   async function loadFlowMap() {
+    if (flowMapState.draggedNode) {
+      return;
+    }
+
     const minutes = timeWindowSelect ? timeWindowSelect.value : 15;
     const app = appSelect ? appSelect.value : 'ECommerce';
 
@@ -1919,6 +1982,18 @@ async function initFlowMap() {
 
       const data = await res.json();
       flowMapState.data = data;
+
+      // Apply saved node layout from session cache if available
+      const savedLayout = getSavedNodeLayout();
+      if (savedLayout && Array.isArray(data.nodes)) {
+        data.nodes.forEach(node => {
+          if (savedLayout[node.id] && typeof savedLayout[node.id].x === 'number' && typeof savedLayout[node.id].y === 'number') {
+            node.x = savedLayout[node.id].x;
+            node.y = savedLayout[node.id].y;
+          }
+        });
+      }
+      updateResetButtonState();
 
       renderEdges(data.edges, data.nodes);
       renderNodes(data.nodes);
