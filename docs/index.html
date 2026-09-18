@@ -27,8 +27,8 @@
   <header class="header">
     <div class="container">
       <a href="#" class="nav-brand">
-        <svg viewBox="0 0 24 24">
-          <path d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2zm1 17.93V18a2 2 0 0 0-2-2h-1v-2h2a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1H9.83a3.001 3.001 0 0 0-2.83-2V4.07A8.006 8.006 0 0 1 19.93 11H18a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h1.93A8.01 8.01 0 0 1 13 19.93z"/>
+        <svg viewBox="0 0 512 512">
+          <path d="M160 32c0-17.7 14.3-32 32-32l32 0c17.7 0 32 14.3 32 32c17.7 0 32 14.3 32 32l0 224c0 17.7-14.3 32-32 32c0 17.7-14.3 32-32 32l-32 0c-17.7 0-32-14.3-32-32c-17.7 0-32-14.3-32-32l0-224c0-17.7 14.3-32 32-32zM32 448l288 0c70.7 0 128-57.3 128-128s-57.3-128-128-128l0-64c106 0 192 86 192 192c0 49.2-18.5 94-48.9 128l16.9 0c17.7 0 32 14.3 32 32s-14.3 32-32 32l-160 0L32 512c-17.7 0-32-14.3-32-32s14.3-32 32-32zm80-64l192 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-192 0c-8.8 0-16-7.2-16-16s7.2-16 16-16z"/>
         </svg>
         <span>KestrelScope</span>
         <span class="brand-badge">v1.0 Sovereign</span>
@@ -138,6 +138,10 @@
             <button class="showcase-tab" data-tab="logs">
               <svg viewBox="0 0 24 24"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H14l6 6v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 19.5v-15zM13.5 3.5V8H18l-4.5-4.5zM7 11a1 1 0 0 0 0 2h10a1 1 0 1 0 0-2H7zm0 4a1 1 0 1 0 0 2h10a1 1 0 1 0 0-2H7z"/></svg>
               <span>Correlated Logs</span>
+            </button>
+            <button class="showcase-tab" data-tab="database">
+              <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 4.02 2 6.5v11C2 19.98 6.48 22 12 22s10-2.02 10-4.5v-11C22 4.02 17.52 2 12 2zm0 2c4.41 0 8 1.34 8 2.5S16.41 9 12 9 4 7.66 4 6.5 7.59 4 12 4zm0 4c3.67 0 7.02-.95 7.82-2.19C20.65 8.1 20 8.65 20 9c0 1.16-3.58 2.5-8 2.5S4 10.16 4 9c0-.35-.65-.9.18-1.19C4.98 9.05 8.33 10 12 10zm0 5.5c-4.42 0-8-1.34-8-2.5v-1.78c1.55.94 4.54 1.58 8 1.58s6.45-.64 8-1.58V13c0 1.16-3.58 2.5-8 2.5zm0 5.5c-4.42 0-8-1.34-8-2.5v-1.78c1.55.94 4.54 1.58 8 1.58s6.45-.64 8-1.58V18.5c0 1.16-3.58 2.5-8 2.5z"/></svg>
+              <span>Database Lifecycle</span>
             </button>
           </div>
 
@@ -352,6 +356,118 @@
               </table>
             </div>
           </div>
+
+          <!-- Tab 5: Database & Storage Lifecycle -->
+          <div class="showcase-panel" id="panel-database">
+            <div class="metrics-demo-container">
+              <!-- KPI Row -->
+              <div class="metrics-kpi-bar">
+                <div class="kpi-card">
+                  <div class="kpi-title">Active Database</div>
+                  <div class="kpi-value">48.2 MB</div>
+                  <div class="kpi-delta">WAL: 1.4 MB • SHM: 32 KB</div>
+                </div>
+                <div class="kpi-card">
+                  <div class="kpi-title">Reclaimable Freelist</div>
+                  <div class="kpi-value">1.8 MB</div>
+                  <div class="kpi-delta">450 unused pages</div>
+                </div>
+                <div class="kpi-card">
+                  <div class="kpi-title">Hot Backups Repository</div>
+                  <div class="kpi-value">14.6 MB</div>
+                  <div class="kpi-delta">4 compressed snapshots</div>
+                </div>
+                <div class="kpi-card">
+                  <div class="kpi-title">Engine Health & Integrity</div>
+                  <div class="kpi-value" style="color: #34d399;">Healthy</div>
+                  <div class="kpi-delta">✓ PRAGMA quick_check OK</div>
+                </div>
+              </div>
+
+              <!-- Backups Catalog Preview -->
+              <div class="logs-demo-container">
+                <div class="logs-toolbar" style="justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                  <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <svg viewBox="0 0 24 24" style="width:16px; height:16px; fill:var(--brand-primary);"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2z"/></svg>
+                    <span style="font-weight:600; font-size:0.9rem; color:#fff;">Live Online Hot Backups Catalog</span>
+                  </div>
+                  <div style="display:flex; gap:0.5rem;">
+                    <button class="btn-filter" style="background: rgba(16,185,129,0.15); color:#34d399; border-color:rgba(16,185,129,0.3);">Integrity Check</button>
+                    <button class="btn-filter" style="background: rgba(40,134,222,0.15); color:#38bdf8; border-color:rgba(40,134,222,0.3);">Flush WAL</button>
+                    <button class="btn-filter active">+ New Snapshot</button>
+                  </div>
+                </div>
+
+                <table class="log-table">
+                  <thead>
+                    <tr>
+                      <th>Snapshot Filename</th>
+                      <th>Type</th>
+                      <th style="text-align:right;">Compressed Size</th>
+                      <th>Created (UTC)</th>
+                      <th>SHA256 Checksum</th>
+                      <th style="text-align:right;">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="log-row">
+                      <td style="font-family:var(--font-mono); font-weight:600; color:#fff;">
+                        kestrelscope-backup-20260918-171915.db.gz
+                        <span style="font-size:0.65rem; background:rgba(16,185,129,0.2); color:#34d399; border:1px solid rgba(16,185,129,0.4); padding:0.1rem 0.35rem; border-radius:3px; margin-left:0.35rem;">GZ</span>
+                        <span style="font-size:0.65rem; background:rgba(255,255,255,0.08); color:#cbd5e1; padding:0.1rem 0.35rem; border-radius:3px; margin-left:0.25rem;">pre-upgrade</span>
+                      </td>
+                      <td><span class="log-badge info">Manual</span></td>
+                      <td style="text-align:right; font-family:var(--font-mono); font-weight:600; color:#cbd5e1;">3.6 MB</td>
+                      <td style="color:var(--text-muted);">9/18/2026, 5:19 PM</td>
+                      <td><span class="trace-pill" title="a7f29c018e4726b1c4b9d0382f6e91029c">a7f29c018e...</span></td>
+                      <td style="text-align:right;">
+                        <span style="font-size:0.75rem; color:#38bdf8; margin-right:0.5rem; cursor:pointer;">Download</span>
+                        <span style="font-size:0.75rem; color:#f59e0b; cursor:pointer;">Restore</span>
+                      </td>
+                    </tr>
+                    <tr class="log-row">
+                      <td style="font-family:var(--font-mono); font-weight:600; color:#fff;">
+                        kestrelscope-backup-20260918-020000.db.gz
+                        <span style="font-size:0.65rem; background:rgba(16,185,129,0.2); color:#34d399; border:1px solid rgba(16,185,129,0.4); padding:0.1rem 0.35rem; border-radius:3px; margin-left:0.35rem;">GZ</span>
+                      </td>
+                      <td><span class="log-badge" style="background:rgba(40,134,222,0.2); color:#38bdf8; border:1px solid rgba(40,134,222,0.4);">Scheduled</span></td>
+                      <td style="text-align:right; font-family:var(--font-mono); font-weight:600; color:#cbd5e1;">3.5 MB</td>
+                      <td style="color:var(--text-muted);">9/18/2026, 2:00 AM</td>
+                      <td><span class="trace-pill" title="8c21e57a4192bc931f6029302194821a3f">8c21e57a41...</span></td>
+                      <td style="text-align:right;">
+                        <span style="font-size:0.75rem; color:#38bdf8; margin-right:0.5rem; cursor:pointer;">Download</span>
+                        <span style="font-size:0.75rem; color:#f59e0b; cursor:pointer;">Restore</span>
+                      </td>
+                    </tr>
+                    <tr class="log-row">
+                      <td style="font-family:var(--font-mono); font-weight:600; color:#fff;">
+                        pre-restore-safety-20260917-214012.db
+                      </td>
+                      <td><span class="log-badge" style="background:rgba(245,158,11,0.2); color:#f59e0b; border:1px solid rgba(245,158,11,0.4);">Safety Rollback</span></td>
+                      <td style="text-align:right; font-family:var(--font-mono); font-weight:600; color:#cbd5e1;">4.1 MB</td>
+                      <td style="color:var(--text-muted);">9/17/2026, 9:40 PM</td>
+                      <td><span class="trace-pill" title="d4e819ac2730193bb2819273941038291f">d4e819ac27...</span></td>
+                      <td style="text-align:right;">
+                        <span style="font-size:0.75rem; color:#38bdf8; margin-right:0.5rem; cursor:pointer;">Download</span>
+                        <span style="font-size:0.75rem; color:#f59e0b; cursor:pointer;">Restore</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Simulation Preview banner -->
+              <div style="background: rgba(15,108,189,0.08); border: 1px solid rgba(15,108,189,0.25); border-radius: var(--radius-md); padding: 0.85rem 1.25rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+                <div style="font-size: 0.85rem; color: #cbd5e1;">
+                  <strong style="color: #38bdf8;">⚡ Automated Retention & Chunked Pruning:</strong>
+                  Deletes expired telemetry in 5,000-row non-blocking chunks with zero write contention.
+                </div>
+                <span class="brand-badge" style="background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3);">
+                  SOC2 Compliance Audit Active
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -421,6 +537,28 @@
           <h3 class="bento-title">Automated Alert Worker</h3>
           <p class="bento-desc">
             Embedded background worker evaluates threshold rules every 60s and dispatches instant webhooks to Slack, Discord, Microsoft Teams, or custom incident management systems.
+          </p>
+        </div>
+
+        <!-- Card 6 (Span 2) -->
+        <div class="bento-card span-2">
+          <div class="bento-icon">
+            <svg viewBox="0 0 24 24"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2z"/></svg>
+          </div>
+          <h3 class="bento-title">Built-In Database Lifecycle & Hot Backups</h3>
+          <p class="bento-desc">
+            Native SQLite Online Backup API generates crash-consistent, non-blocking snapshots with streaming Gzip compression (<code>.db.gz</code>) and SHA256 checksums while writes remain active. Features chunked batch pruning (5,000 rows/chunk), dry-run simulations, WAL checkpoint flushes, vacuum compaction, and automated safety rollback snapshots on disaster recovery restore.
+          </p>
+        </div>
+
+        <!-- Card 7 -->
+        <div class="bento-card">
+          <div class="bento-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 4.02 2 6.5v11C2 19.98 6.48 22 12 22s10-2.02 10-4.5v-11C22 4.02 17.52 2 12 2zm-1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+          </div>
+          <h3 class="bento-title">Role-Based Access & SOC2 Audit Trail</h3>
+          <p class="bento-desc">
+            Built-in role-based security strictly separating Administrators from Standard viewers. Every retention policy adjustment, pruning run, backup creation, and restore operation is permanently recorded in an immutable audit trail table for compliance.
           </p>
         </div>
       </div>
@@ -532,6 +670,18 @@
               <td class="highlight"><span class="check-yes">✓ &lt; 60 seconds</span></td>
               <td>Hours (Agent config & sales calls)</td>
               <td>Days (Kubernetes Helm charts)</td>
+            </tr>
+            <tr>
+              <td><strong>Database Lifecycle & Backups</strong></td>
+              <td class="highlight"><span class="check-yes">✓ Built-in hot backup API (.db.gz), dry-run pruning & disaster recovery</span></td>
+              <td>Managed blackbox (zero direct snapshot export)</td>
+              <td>Complex multi-database backup scripts & object storage</td>
+            </tr>
+            <tr>
+              <td><strong>Access Control & Audit Trail</strong></td>
+              <td class="highlight"><span class="check-yes">✓ Built-in RBAC (Admin/Standard) & SOC2 audit logs</span></td>
+              <td><span class="check-no">✗ Paywalled Enterprise SSO & Audit Tier</span></td>
+              <td>Requires Grafana Enterprise license for granular RBAC</td>
             </tr>
             <tr>
               <td><strong>License & Ingestion Cost</strong></td>
@@ -674,7 +824,7 @@ curl -X POST http://localhost:5000/v1/logs \
       <div class="footer-grid">
         <div class="footer-brand">
           <div class="nav-brand">
-            <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2zm1 17.93V18a2 2 0 0 0-2-2h-1v-2h2a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1H9.83a3.001 3.001 0 0 0-2.83-2V4.07A8.006 8.006 0 0 1 19.93 11H18a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h1.93A8.01 8.01 0 0 1 13 19.93z"/></svg>
+            <svg viewBox="0 0 512 512"><path d="M160 32c0-17.7 14.3-32 32-32l32 0c17.7 0 32 14.3 32 32c17.7 0 32 14.3 32 32l0 224c0 17.7-14.3 32-32 32c0 17.7-14.3 32-32 32l-32 0c-17.7 0-32-14.3-32-32c-17.7 0-32-14.3-32-32l0-224c0-17.7 14.3-32 32-32zM32 448l288 0c70.7 0 128-57.3 128-128s-57.3-128-128-128l0-64c106 0 192 86 192 192c0 49.2-18.5 94-48.9 128l16.9 0c17.7 0 32 14.3 32 32s-14.3 32-32 32l-160 0L32 512c-17.7 0-32-14.3-32-32s14.3-32 32-32zm80-64l192 0c8.8 0 16 7.2 16 16s-7.2 16-16 16l-192 0c-8.8 0-16-7.2-16-16s7.2-16 16-16z"/></svg>
             <span>KestrelScope</span>
           </div>
           <p>
@@ -689,6 +839,7 @@ curl -X POST http://localhost:5000/v1/logs \
             <li><a href="#showcase">Metrics Explorer</a></li>
             <li><a href="#showcase">Distributed Traces</a></li>
             <li><a href="#showcase">Correlated Logs</a></li>
+            <li><a href="#showcase">Database Management</a></li>
           </ul>
         </div>
 

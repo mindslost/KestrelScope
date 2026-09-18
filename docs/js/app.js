@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initQuickstartTabs();
   initCopyButtons();
   initMobileNav();
+  initDatabaseDemo();
 
   // Initialize FlowMap demo by default
   if (typeof window.initFlowMap === 'function') {
@@ -303,3 +304,27 @@ function initMobileNav() {
     navMenu.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
   });
 }
+
+/* ==========================================================================
+   8. Database Management Showcase Interactivity
+   ========================================================================== */
+function initDatabaseDemo() {
+  const panel = document.getElementById('panel-database');
+  if (!panel) return;
+
+  panel.querySelectorAll('button.btn-filter').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const text = btn.textContent.trim();
+      if (text.includes('Integrity')) {
+        alert('Database Integrity Status: HEALTHY\n\nIntegrity Check: ok\nForeign Key Check: ok\nValidated all schema tables & indexes.');
+      } else if (text.includes('Flush WAL')) {
+        alert('PRAGMA wal_checkpoint(TRUNCATE) executed:\n\n0 dirty pages remaining. WAL journal synchronized and truncated to 0 bytes.');
+      } else if (text.includes('New Snapshot')) {
+        const now = new Date();
+        const dateStr = now.toISOString().replace(/[-:T.]/g, '').substring(0, 14);
+        alert(`Live Online Hot Backup Generated:\n\nkestrelscope-backup-${dateStr}.db.gz\nFormat: Gzip Compressed SQLite (.db.gz)\nChecksum: 9f8a2bc471d8e93...\nStatus: Crash-consistent online snapshot ready for download.`);
+      }
+    });
+  });
+}
+
