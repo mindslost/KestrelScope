@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Database Management — KestrelScope</title>
+  <link rel="stylesheet" href="/css/main.css">
+  <style>
+    .tab-nav {
+      display: flex;
+      gap: 0.5rem;
+      border-bottom: 1px solid var(--fui-colorNeutralStroke1);
+      margin-bottom: 1.5rem;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--fui-colorNeutralForeground3);
+      padding: 0.65rem 1.25rem;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.15s ease;
+    }
+    .tab-btn:hover {
+      color: var(--fui-colorNeutralForeground1);
+      background: var(--fui-colorNeutralBackgroundHover);
+      border-radius: var(--fui-borderRadiusMedium) var(--fui-borderRadiusMedium) 0 0;
+    }
+    .tab-btn.active {
+      color: var(--fui-colorBrandForeground1);
+      border-bottom-color: var(--fui-colorBrandStroke1);
+    }
+    .tab-pane {
+      display: none;
+    }
+    .tab-pane.active {
+      display: block;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .kpi-card {
+      background: var(--fui-colorNeutralBackgroundCard);
+      border: 1px solid var(--fui-colorNeutralStroke1);
+      border-radius: var(--fui-borderRadiusLarge);
+      padding: 1.25rem;
+    }
+    .kpi-label {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--fui-colorNeutralForeground3);
+      margin-bottom: 0.35rem;
+    }
+    .kpi-value {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: var(--fui-colorNeutralForeground1);
+    }
+    .kpi-sub {
+      font-size: 0.8rem;
+      color: var(--fui-colorNeutralForeground4);
+      margin-top: 0.25rem;
+    }
+    .warning-banner {
+      display: none;
+      background: var(--fui-colorPaletteMarigoldBackground1);
+      border: 1px solid var(--fui-colorPaletteMarigoldBorder1);
+      color: var(--fui-colorPaletteMarigoldForeground1);
+      padding: 0.9rem 1.25rem;
+      border-radius: var(--fui-borderRadiusLarge);
+      margin-bottom: 1.5rem;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .danger-box {
+      background: var(--fui-colorPaletteRedBackground1);
+      border: 1px solid var(--fui-colorPaletteRedBorder1);
+      color: var(--fui-colorPaletteRedForeground1);
+      padding: 1rem 1.25rem;
+      border-radius: var(--fui-borderRadiusLarge);
+      margin-bottom: 1.5rem;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+    }
+    .action-bar {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .mono {
+      font-family: var(--fui-fontFamilyMonospace);
+    }
+  </style>
+</head>
+<body>
+  <header class="navbar">
+    <a href="/dashboard.html" class="nav-brand">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2zm1 17.93V18a2 2 0 0 0-2-2h-1v-2h2a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1H9.83a3.001 3.001 0 0 0-2.83-2V4.07A8.006 8.006 0 0 1 19.93 11H18a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h1.93A8.01 8.01 0 0 1 13 19.93z"/>
+      </svg>
+      <span>KestrelScope</span>
+    </a>
+
+    <nav class="nav-links">
+      <a href="/flowmap.html" class="nav-link">
+        <svg viewBox="0 0 24 24"><path d="M16 2a3 3 0 0 0-2.83 2H10.83A3.001 3.001 0 0 0 8 2a3 3 0 0 0-3 3c0 1.3.84 2.4 2 2.82V12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2H9V9.82c.48-.18.9-.48 1.23-.85l2.6 1.3c-.02.18-.03.36-.03.55a3 3 0 1 0 6 0 3 3 0 0 0-2.8-3v-1.64c1.16-.41 2-1.52 2-2.82a3 3 0 0 0-3-3z"/></svg>
+        <span>Flow Map</span>
+      </a>
+      <a href="/dashboard.html" class="nav-link">
+        <svg viewBox="0 0 24 24"><path d="M3 3a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h18a1 1 0 1 0 0-2H4V4a1 1 0 0 0-1-1zm5 14a1 1 0 0 0 1-1v-4a1 1 0 1 0-2 0v4a1 1 0 0 0 1 1zm5 0a1 1 0 0 0 1-1V8a1 1 0 1 0-2 0v8a1 1 0 0 0 1 1zm5 0a1 1 0 0 0 1-1v-7a1 1 0 1 0-2 0v7a1 1 0 0 0 1 1z"/></svg>
+        <span>Metrics</span>
+      </a>
+      <a href="/traces.html" class="nav-link">
+        <svg viewBox="0 0 24 24"><path d="M10 2a8 8 0 0 1 6.32 12.906l4.387 4.387a1 1 0 0 1-1.414 1.414l-4.387-4.387A8 8 0 1 1 10 2zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12zm-1 3a1 1 0 0 1 2 0v3.586l2.707 2.707a1 1 0 0 1-1.414 1.414l-3-3A1 1 0 0 1 9 11V7z"/></svg>
+        <span>Traces</span>
+      </a>
+      <a href="/logs.html" class="nav-link">
+        <svg viewBox="0 0 24 24"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H14l6 6v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 19.5v-15zM13.5 3.5V8H18l-4.5-4.5zM7 11a1 1 0 0 0 0 2h10a1 1 0 1 0 0-2H7zm0 4a1 1 0 1 0 0 2h10a1 1 0 1 0 0-2H7z"/></svg>
+        <span>Logs</span>
+      </a>
+      <a href="/alerts.html" class="nav-link">
+        <svg viewBox="0 0 24 24"><path d="M12 2c.7 0 1.34.37 1.69.97l8.03 13.91A1.96 1.96 0 0 1 20.02 20H3.98a1.96 1.96 0 0 1-1.7-2.92l8.03-13.91A1.95 1.95 0 0 1 12 2zm0 13a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm0-7a1 1 0 0 0-1 1v4a1 1 0 1 0 2 0V9a1 1 0 0 0-1-1z"/></svg>
+        <span>Alert Rules</span>
+      </a>
+      <a href="/users.html" class="nav-link nav-users-link" style="display:none;">
+        <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+        <span>Users</span>
+      </a>
+      <a href="/database.html" class="nav-link active nav-database-link" style="display:none;">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 4.02 2 6.5v11C2 19.98 6.48 22 12 22s10-2.02 10-4.5v-11C22 4.02 17.52 2 12 2zm0 2c4.42 0 8 1.57 8 2.5S16.42 9 12 9 4 7.43 4 6.5 7.58 4 12 4zm8 5.5c0 .93-3.58 2.5-8 2.5s-8-1.57-8-2.5V8.2c1.78 1.1 4.71 1.8 8 1.8s6.22-.7 8-1.8v1.3zm0 5.5c0 .93-3.58 2.5-8 2.5s-8-1.57-8-2.5v-1.3c1.78 1.1 4.71 1.8 8 1.8s6.22-.7 8-1.8V15zm0 5.5c0 .93-3.58 2.5-8 2.5s-8-1.57-8-2.5v-1.3c1.78 1.1 4.71 1.8 8 1.8s6.22-.7 8-1.8v1.3z"/></svg>
+        <span>Database</span>
+      </a>
+    </nav>
+
+    <div class="nav-user">
+      <div id="userAvatar" class="user-avatar">AD</div>
+      <button class="btn-logout" onclick="handleLogout()">
+        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:currentColor;"><path d="M5 3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7a1 1 0 1 0 0-2H5V5h7a1 1 0 1 0 0-2H5zm12.293 4.293a1 1 0 0 1 1.414 0l4 4a1 1 0 0 1 0 1.414l-4 4a1 1 0 0 1-1.414-1.414L18.586 13H10a1 1 0 1 1 0-2h8.586l-1.293-1.293a1 1 0 0 1 0-1.414z"/></svg>
+        <span>Sign Out</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <!-- Storage Warning Banner -->
+    <div id="storageWarningBanner" class="warning-banner">
+      <svg viewBox="0 0 24 24" style="width:20px;height:20px;fill:currentColor;flex-shrink:0;"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+      <div style="flex:1;">
+        <strong>Storage High-Water Mark Warning:</strong>
+        <span id="storageWarningText">Database storage has reached the configured warning threshold.</span>
+      </div>
+      <button class="btn-secondary btn-sm" onclick="switchDbTab('retention')">Review Retention</button>
+    </div>
+
+    <!-- Page Header -->
+    <div class="alert-header" style="margin-bottom: 1.25rem;">
+      <div>
+        <h1 class="page-title">Database Management</h1>
+        <p class="page-subtitle">Storage analytics, lifecycle retention policies, safe online backups, and disaster recovery (Admin only)</p>
+      </div>
+      <div class="action-bar">
+        <button id="btnQuickBackup" class="btn-primary" onclick="openCreateBackupModal()">
+          <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+          <span>Create Backup</span>
+        </button>
+        <button id="btnRefreshDb" class="btn-secondary" onclick="loadDatabaseData()">
+          <svg viewBox="0 0 24 24" style="width:15px;height:15px;fill:currentColor;"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+          <span>Refresh</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Tabs Navigation -->
+    <div class="tab-nav">
+      <button class="tab-btn active" data-tab="overview" onclick="switchDbTab('overview')">
+        <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+        <span>Overview & Storage</span>
+      </button>
+      <button class="tab-btn" data-tab="retention" onclick="switchDbTab('retention')">
+        <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+        <span>Retention & Pruning</span>
+      </button>
+      <button class="tab-btn" data-tab="backups" onclick="switchDbTab('backups')">
+        <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2z"/></svg>
+        <span>Backups Catalog</span>
+      </button>
+      <button class="tab-btn" data-tab="restore" onclick="switchDbTab('restore')">
+        <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
+        <span>Disaster Recovery</span>
+      </button>
+      <button class="tab-btn" data-tab="audit" onclick="switchDbTab('audit')">
+        <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+        <span>Audit Trail</span>
+      </button>
+    </div>
+
+    <!-- TAB 1: OVERVIEW & STORAGE -->
+    <div id="pane-overview" class="tab-pane active">
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Active Database</div>
+          <div id="statDbSize" class="kpi-value">—</div>
+          <div id="statWalSize" class="kpi-sub">WAL: — | SHM: —</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Reclaimable Freelist</div>
+          <div id="statFreelist" class="kpi-value">—</div>
+          <div id="statPages" class="kpi-sub">Pages: —</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Backups Repository</div>
+          <div id="statBackupsSize" class="kpi-value">—</div>
+          <div id="statBackupsCount" class="kpi-sub">0 snapshot archives</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Database Health</div>
+          <div id="statHealthStatus" class="kpi-value" style="color:var(--fui-colorPaletteGreenForeground1);">Healthy</div>
+          <div id="statHealthChecked" class="kpi-sub">Integrity: OK</div>
+        </div>
+      </div>
+
+      <!-- Quick Maintenance Actions -->
+      <div class="card" style="margin-bottom: 1.5rem; padding: 1.25rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+          <div>
+            <h3 style="margin:0 0 0.25rem 0; font-size:1rem;">Engine Operations</h3>
+            <p style="margin:0; color:var(--fui-colorNeutralForeground3); font-size:0.85rem;">Run low-level SQLite vacuuming, WAL checkpointing, or structural integrity scans.</p>
+          </div>
+          <div class="action-bar">
+            <button class="btn-secondary btn-sm" onclick="runIntegrityCheck()">Run Integrity Check</button>
+            <button class="btn-secondary btn-sm" onclick="runCheckpoint()">Flush WAL Checkpoint</button>
+            <button class="btn-secondary btn-sm" onclick="runVacuum()">Vacuum Database</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tables Storage Breakdown Card -->
+      <div class="card" style="padding: 0; overflow: hidden; border: 1px solid var(--fui-colorNeutralStroke1);">
+        <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--fui-colorNeutralStroke1); display:flex; justify-content:space-between; align-items:center;">
+          <h3 style="margin:0; font-size:1rem;">Table Storage & Telemetry Breakdown</h3>
+          <span style="font-size:0.8rem; color:var(--fui-colorNeutralForeground4);">Live SQLite Schema Inspection</span>
+        </div>
+        <div class="fui-table-wrapper" style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+          <table class="fui-table" style="width: 100%; min-width: 880px; border-collapse: collapse;">
+            <thead>
+              <tr>
+                <th style="min-width: 200px; vertical-align: middle;">Table Name</th>
+                <th style="width: 130px; text-align: right; white-space: nowrap; vertical-align: middle;">Row Count</th>
+                <th style="width: 130px; text-align: right; white-space: nowrap; vertical-align: middle;">Est. Size</th>
+                <th style="min-width: 260px; vertical-align: middle;">Data Span (Oldest – Newest)</th>
+                <th style="width: 120px; text-align: right; white-space: nowrap; vertical-align: middle;">Quick Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tablesTableBody">
+              <tr>
+                <td colspan="5" style="text-align: center; color: var(--fui-colorNeutralForeground4); padding: 2rem;">
+                  Loading table statistics...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: RETENTION & PRUNING -->
+    <div id="pane-retention" class="tab-pane">
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;" class="form-grid">
+        <!-- Retention Settings Card -->
+        <div class="card" style="padding: 1.5rem;">
+          <h3 style="margin-top:0; font-size:1.05rem;">Data Lifecycle Retention Policies</h3>
+          <p style="color:var(--fui-colorNeutralForeground3); font-size:0.85rem; margin-bottom:1.5rem;">
+            Configure time-to-live (TTL) thresholds in days. Telemetry older than the specified retention period is eligible for scheduled or on-demand pruning.
+          </p>
+
+          <form id="retentionForm" onsubmit="handleSaveRetention(event)">
+            <div style="margin-bottom: 1rem;">
+              <label class="filter-label">Metrics Retention (Days)</label>
+              <input type="number" id="policyMetricsDays" class="filter-input" style="width:100%; margin-top:0.35rem;" min="1" max="365" required>
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+              <label class="filter-label">Traces Retention (Days)</label>
+              <input type="number" id="policyTracesDays" class="filter-input" style="width:100%; margin-top:0.35rem;" min="1" max="365" required>
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+              <label class="filter-label">Logs Retention (Days — Global)</label>
+              <input type="number" id="policyLogsDays" class="filter-input" style="width:100%; margin-top:0.35rem;" min="1" max="365" required>
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+              <label class="filter-label">Alert History Retention (Days)</label>
+              <input type="number" id="policyAlertsDays" class="filter-input" style="width:100%; margin-top:0.35rem;" min="1" max="365" required>
+            </div>
+
+            <div style="margin-bottom: 1.25rem;">
+              <label class="filter-label">Storage Warning Threshold (MB)</label>
+              <input type="number" id="policyWarningMb" class="filter-input" style="width:100%; margin-top:0.35rem;" min="100" max="1000000" required>
+              <small style="color:var(--fui-colorNeutralForeground4); font-size:0.75rem;">Surfaces a warning banner if active DB exceeds this capacity.</small>
+            </div>
+
+            <div style="border-top:1px solid var(--fui-colorNeutralStroke1); padding-top:1rem; margin-bottom:1.25rem;">
+              <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; font-size:0.9rem; margin-bottom:0.75rem;">
+                <input type="checkbox" id="policyAutoPrune">
+                <span>Enable Automated Nightly Pruning</span>
+              </label>
+              <div style="display:flex; align-items:center; gap:0.5rem;">
+                <span style="font-size:0.85rem; color:var(--fui-colorNeutralForeground3);">Scheduled Hour (UTC):</span>
+                <input type="number" id="policyAutoPruneHour" class="filter-input" style="width:80px;" min="0" max="23">
+              </div>
+            </div>
+
+            <div style="border-top:1px solid var(--fui-colorNeutralStroke1); padding-top:1rem; margin-bottom:1.5rem;">
+              <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; font-size:0.9rem; margin-bottom:0.75rem;">
+                <input type="checkbox" id="policyAutoBackup">
+                <span>Enable Automated Daily Backup</span>
+              </label>
+              <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                  <span style="font-size:0.85rem; color:var(--fui-colorNeutralForeground3);">Hour (UTC):</span>
+                  <input type="number" id="policyAutoBackupHour" class="filter-input" style="width:80px;" min="0" max="23">
+                </div>
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                  <span style="font-size:0.85rem; color:var(--fui-colorNeutralForeground3);">Keep Latest:</span>
+                  <input type="number" id="policyBackupRetentionCount" class="filter-input" style="width:80px;" min="1" max="30">
+                  <span style="font-size:0.85rem; color:var(--fui-colorNeutralForeground3);">backups</span>
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" class="btn-primary" style="width:100%;">Save Retention Policies</button>
+          </form>
+        </div>
+
+        <!-- On-Demand Pruner Card -->
+        <div class="card" style="padding: 1.5rem; display:flex; flex-direction:column; justify-content:space-between;">
+          <div>
+            <h3 style="margin-top:0; font-size:1.05rem;">On-Demand Telemetry Pruning</h3>
+            <p style="color:var(--fui-colorNeutralForeground3); font-size:0.85rem; margin-bottom:1.5rem;">
+              Immediately reclaim storage by deleting expired records. All batch deletions are executed in chunked transactions to prevent database lock contention.
+            </p>
+
+            <div style="margin-bottom: 1rem;">
+              <label class="filter-label">Pruning Scope Target</label>
+              <select id="pruneTargetSelect" class="filter-select" style="width:100%; margin-top:0.35rem;">
+                <option value="all">All Telemetry (Metrics, Traces, Logs)</option>
+                <option value="metrics">Metrics Only (MetricSamples)</option>
+                <option value="traces">Traces Only (Traces & Spans)</option>
+                <option value="logs">Logs Only (Logs)</option>
+                <option value="audit_logs">Administrative Audit Logs Only</option>
+              </select>
+            </div>
+
+            <div style="margin-bottom: 1.25rem;">
+              <label class="filter-label">Override Retention Days (Optional)</label>
+              <input type="number" id="pruneCustomDays" class="filter-input" style="width:100%; margin-top:0.35rem;" placeholder="Leave empty to use policy defaults" min="1">
+            </div>
+
+            <div style="margin-bottom: 1.5rem;">
+              <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; font-size:0.85rem; margin-bottom:0.5rem;">
+                <input type="checkbox" id="pruneCheckpoint" checked>
+                <span>Checkpoint & Truncate WAL journal after pruning</span>
+              </label>
+              <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; font-size:0.85rem;">
+                <input type="checkbox" id="pruneVacuum">
+                <span>Run full VACUUM compaction after pruning (takes longer)</span>
+              </label>
+            </div>
+
+            <!-- Dry-run preview container -->
+            <div id="prunePreviewBox" style="display:none; background:var(--fui-colorNeutralBackground3); border:1px solid var(--fui-colorNeutralStroke1); border-radius:var(--fui-borderRadiusMedium); padding:1rem; margin-bottom:1.5rem;">
+              <div style="font-weight:600; font-size:0.85rem; color:var(--fui-colorBrandForeground1); margin-bottom:0.5rem;">Simulation / Dry-Run Result:</div>
+              <div id="prunePreviewContent" style="font-size:0.85rem; color:var(--fui-colorNeutralForeground2); line-height:1.4;"></div>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:0.75rem;">
+            <button class="btn-secondary" style="flex:1;" onclick="handleDryRunPrune()">
+              <svg viewBox="0 0 24 24" style="width:15px;height:15px;fill:currentColor;"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+              <span>Dry Run (Preview)</span>
+            </button>
+            <button class="btn-primary" style="flex:1; background:#ef4444; border-color:#dc2626;" onclick="openConfirmPruneModal()">
+              <svg viewBox="0 0 24 24" style="width:15px;height:15px;fill:currentColor;"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+              <span>Execute Prune</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: BACKUPS CATALOG -->
+    <div id="pane-backups" class="tab-pane">
+      <div class="card" style="padding: 0; overflow: hidden; border: 1px solid var(--fui-colorNeutralStroke1);">
+        <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--fui-colorNeutralStroke1); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+          <div>
+            <h3 style="margin:0; font-size:1rem;">Available Database Snapshots</h3>
+            <p style="margin:0.25rem 0 0 0; font-size:0.85rem; color:var(--fui-colorNeutralForeground3);">
+              Online hot backups generated via SQLite Online Backup API. Safe to download or restore.
+            </p>
+          </div>
+          <button class="btn-primary btn-sm" onclick="openCreateBackupModal()">
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:currentColor;"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+            <span>New Snapshot</span>
+          </button>
+        </div>
+        <div class="fui-table-wrapper" style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+          <table class="fui-table" style="width: 100%; min-width: 980px; border-collapse: collapse;">
+            <thead>
+              <tr>
+                <th style="min-width: 280px; vertical-align: middle;">Snapshot Filename</th>
+                <th style="width: 130px; white-space: nowrap; vertical-align: middle;">Type</th>
+                <th style="width: 110px; white-space: nowrap; text-align: right; vertical-align: middle;">Size</th>
+                <th style="width: 180px; white-space: nowrap; vertical-align: middle;">Created At (UTC)</th>
+                <th style="width: 140px; white-space: nowrap; vertical-align: middle;">SHA256 Checksum</th>
+                <th style="width: 240px; min-width: 240px; text-align: right; white-space: nowrap; vertical-align: middle;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="backupsTableBody">
+              <tr>
+                <td colspan="6" style="text-align: center; color: var(--fui-colorNeutralForeground4); padding: 2rem;">
+                  Loading backups catalog...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: DISASTER RECOVERY & RESTORE -->
+    <div id="pane-restore" class="tab-pane">
+      <div style="max-width: 800px; margin: 0 auto;">
+        <div class="danger-box">
+          <div style="display:flex; gap:0.75rem; align-items:flex-start;">
+            <svg viewBox="0 0 24 24" style="width:24px;height:24px;fill:currentColor;flex-shrink:0;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+            <div>
+              <h3 style="margin:0 0 0.35rem 0; font-size:1.05rem;">Disaster Recovery Safety Protocol</h3>
+              <p style="margin:0; font-size:0.85rem; line-height:1.4;">
+                Restoring a snapshot will replace the active SQLite database with the selected snapshot.
+                <strong>KestrelScope will automatically generate an emergency safety rollback backup before overwriting data</strong>, ensuring you can undo the restoration at any time.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="padding: 1.75rem;">
+          <h3 style="margin-top:0; font-size:1.1rem;">Select Snapshot to Restore</h3>
+          
+          <form id="restoreForm" onsubmit="handleExecuteRestore(event)">
+            <div style="margin-bottom: 1.25rem;">
+              <label class="filter-label">Target Backup Snapshot</label>
+              <select id="restoreSelectBackup" class="filter-select" style="width:100%; margin-top:0.35rem;" required>
+                <option value="">Select a snapshot...</option>
+              </select>
+            </div>
+
+            <div style="margin-bottom: 1.5rem;">
+              <label class="filter-label" style="color:var(--fui-colorPaletteRedForeground1);">
+                Authorization Confirmation (Type <strong>CONFIRM_RESTORE</strong> to proceed)
+              </label>
+              <input type="text" id="restoreConfirmToken" class="filter-input" style="width:100%; margin-top:0.35rem;" placeholder="CONFIRM_RESTORE" autocomplete="off" required>
+            </div>
+
+            <div id="restoreStatusBox" style="display:none; padding:1rem; border-radius:var(--fui-borderRadiusMedium); margin-bottom:1.5rem; font-size:0.85rem;"></div>
+
+            <button type="submit" id="btnSubmitRestore" class="btn-primary" style="width:100%; background:#ef4444; border-color:#dc2626;" disabled>
+              Authorize & Restore Database Snapshot
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 5: AUDIT TRAIL -->
+    <div id="pane-audit" class="tab-pane">
+      <div class="card" style="padding: 0; overflow: hidden; border: 1px solid var(--fui-colorNeutralStroke1);">
+        <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--fui-colorNeutralStroke1); display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h3 style="margin:0; font-size:1rem;">Administrative Database Audit Trail</h3>
+            <p style="margin:0.25rem 0 0 0; font-size:0.85rem; color:var(--fui-colorNeutralForeground3);">
+              Compliance record of all backup, restore, pruning, policy updates, and engine operations.
+            </p>
+          </div>
+          <button class="btn-secondary btn-sm" onclick="loadAuditLogs()">Reload Audit</button>
+        </div>
+        <div class="fui-table-wrapper" style="max-height: calc(100vh - 280px); overflow-y: auto;">
+          <table class="fui-table" style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr>
+                <th style="width: 18%;">Timestamp (UTC)</th>
+                <th style="width: 12%;">Admin User</th>
+                <th style="width: 15%;">Action</th>
+                <th style="width: 20%;">Target</th>
+                <th style="width: 23%;">Details</th>
+                <th style="width: 12%;">Client IP</th>
+              </tr>
+            </thead>
+            <tbody id="auditTableBody">
+              <tr>
+                <td colspan="6" style="text-align: center; color: var(--fui-colorNeutralForeground4); padding: 2rem;">
+                  Loading audit trail...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Modal: Create Backup -->
+  <div id="createBackupModal" class="modal-overlay">
+    <div class="modal-content">
+      <h3 class="modal-title">Create Database Backup Snapshot</h3>
+      <p style="color:var(--fui-colorNeutralForeground3); font-size:0.85rem; margin-bottom:1.25rem;">
+        Creates a crash-consistent online backup while the application continues ingesting telemetry.
+      </p>
+
+      <form id="createBackupForm" onsubmit="handleCreateBackupSubmit(event)">
+        <div style="margin-bottom: 1rem;">
+          <label class="filter-label">Snapshot Label (Optional)</label>
+          <input type="text" id="backupLabelInput" class="filter-input" style="width:100%; margin-top:0.35rem;" placeholder="e.g. pre-migration, weekly-milestone">
+        </div>
+
+        <div style="margin-bottom: 1.5rem;">
+          <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; font-size:0.9rem;">
+            <input type="checkbox" id="backupCompressInput" checked>
+            <span>Enable Gzip Compression (.db.gz — saves 70–85% disk space)</span>
+          </label>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="closeCreateBackupModal()">Cancel</button>
+          <button type="submit" id="btnConfirmCreateBackup" class="btn-primary">Generate Snapshot</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Confirm Prune -->
+  <div id="confirmPruneModal" class="modal-overlay">
+    <div class="modal-content">
+      <h3 class="modal-title" style="color:var(--fui-colorPaletteRedForeground1);">Confirm Permanent Data Pruning</h3>
+      <p style="color:var(--fui-colorNeutralForeground2); font-size:0.85rem; margin-bottom:1.25rem;">
+        Are you sure you want to permanently delete telemetry records matching the selected target and cutoff threshold?
+      </p>
+
+      <div id="pruneConfirmSummary" style="background:var(--fui-colorNeutralBackground3); padding:0.85rem; border-radius:var(--fui-borderRadiusMedium); margin-bottom:1.25rem; font-size:0.85rem; color:var(--fui-colorNeutralForeground2);"></div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="closeConfirmPruneModal()">Cancel</button>
+        <button type="button" id="btnExecutePruneConfirm" class="btn-primary" style="background:#ef4444; border-color:#dc2626;" onclick="handleExecutePruneConfirmed()">
+          Yes, Execute Prune
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => initDatabaseManagement());
+  </script>
+</body>
+</html>
+

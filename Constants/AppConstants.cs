@@ -52,5 +52,35 @@ public static class AppConstants
         public const int InitialDelaySeconds = 2;
         public const int WebhookTimeoutSeconds = 5;
     }
+
+    public static class DatabaseManagement
+    {
+        public const string DefaultBackupDirectory = "backups";
+        public const int DefaultRetentionMetricsDays = 14;
+        public const int DefaultRetentionTracesDays = 7;
+        public const int DefaultRetentionLogsDays = 14;
+        public const int DefaultRetentionAlertsDays = 90;
+        public const int DefaultRetentionAuditLogsDays = 180;
+        public const long DefaultStorageWarningThresholdMb = 5120; // 5 GB default warning threshold
+        public const int DefaultPruneBatchSize = 5000;
+        public const bool DefaultAutoPruneEnabled = true;
+        public const int DefaultAutoPruneHourUtc = 2;
+        public const bool DefaultAutoBackupEnabled = false;
+        public const int DefaultAutoBackupHourUtc = 3;
+        public const int DefaultBackupRetentionCount = 7;
+        public const string RestoreConfirmationKeyword = "CONFIRM_RESTORE";
+    }
+
+    public static class AuditActions
+    {
+        public const string Prune = "PRUNE";
+        public const string BackupCreate = "BACKUP_CREATE";
+        public const string BackupDelete = "BACKUP_DELETE";
+        public const string BackupRestore = "RESTORE";
+        public const string RetentionUpdate = "RETENTION_UPDATE";
+        public const string Vacuum = "VACUUM";
+        public const string Checkpoint = "CHECKPOINT";
+        public const string IntegrityCheck = "INTEGRITY_CHECK";
+    }
 }
 

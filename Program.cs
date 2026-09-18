@@ -63,6 +63,9 @@ builder.Services.AddAuthentication(AppConstants.Auth.CookieScheme)
 builder.Services.AddSingleton<AlertRulerWorker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<AlertRulerWorker>());
 
+builder.Services.AddSingleton<IDatabaseManagementService, DatabaseManagementService>();
+builder.Services.AddHostedService<DatabaseMaintenanceWorker>();
+
 var app = builder.Build();
 
 app.UseDefaultFiles();

@@ -538,4 +538,184 @@ public class EndToEndPipelineTests : IAsyncLifetime
         Assert.True(detailsDoc.RootElement.TryGetProperty("recentTraces", out _));
         Assert.True(detailsDoc.RootElement.TryGetProperty("recentLogs", out _));
     }
+
+    [Fact]
+    public async Task Test6_DatabaseManagement_RBAC_Enforcement()
+    {
+        // 1. Unauthenticated request must return 401 Unauthorized
+        var anonRes = await _http.GetAsync($"{_kestrelScopeUrl}/api/admin/database/storage");
+        Assert.Equal(HttpStatusCode.Unauthorized, anonRes.StatusCode);
+
+        // 2. Standard user must return 403 Forbidden
+        var adminClient = await CreateAuthenticatedClientAsync("admin", "admin");
+        string standardUser = $"dbstd_{Guid.NewGuid():N}"[..12];
+        string standardPass = "StandardPass123!";
+
+        var createRes = await adminClient.PostAsJsonAsync($"{_kestrelScopeUrl}/api/users", new
+        {
+            username = standardUser,
+            password = standardPass,
+            role = "standard"
+        });
+        Assert.Equal(HttpStatusCode.OK, createRes.StatusCode);
+
+        var standardClient = await CreateAuthenticatedClientAsync(standardUser, standardPass);
+        var stdRes = await standardClient.GetAsync($"{_kestrelScopeUrl}/api/admin/database/storage");
+        Assert.Equal(HttpStatusCode.Forbidden, stdRes.StatusCode);
+
+        // 3. Admin user must return 200 OK
+        var admRes = await adminClient.GetAsync($"{_kestrelScopeUrl}/api/admin/database/storage");
+        Assert.Equal(HttpStatusCode.OK, admRes.StatusCode);
+    }
+
+    [Fact]
+    public async Task Test7_DatabaseManagement_StorageStats_And_Health()
+    {
+        var adminClient = await CreateAuthenticatedClientAsync("admin", "admin");
+
+        // 1. Storage Stats
+        var storageRes = await adminClient.GetAsync($"{_kestrelScopeUrl}/api/admin/database/storage");
+        Assert.Equal(HttpStatusCode.OK, storageRes.StatusCode);
+        using var storageDoc = await JsonDocument.ParseAsync(await storageRes.Content.ReadAsStreamAsync());
+        var root = storageDoc.RootElement;
+        Assert.True(root.GetProperty("databaseSizeBytes").GetInt64() > 0);
+        Assert.True(root.TryGetProperty("tables", out var tablesEl));
+        var tables = tablesEl.EnumerateArray().ToList();
+        Assert.NotEmpty(tables);
+        var tableNames = tables.Select(t => t.GetProperty("tableName").GetString()).ToList();
+        Assert.Contains("MetricSamples", tableNames);
+        Assert.Contains("Traces", tableNames);
+        Assert.Contains("Logs", tableNames);
+        Assert.Contains("DatabaseSettings", tableNames);
+        Assert.Contains("AdminAuditLogs", tableNames);
+
+        // 2. Health & Structural Integrity Check
+        var healthRes = await adminClient.GetAsync($"{_kestrelScopeUrl}/api/admin/database/health");
+        Assert.Equal(HttpStatusCode.OK, healthRes.StatusCode);
+        using var healthDoc = await JsonDocument.ParseAsync(await healthRes.Content.ReadAsStreamAsync());
+        var healthRoot = healthDoc.RootElement;
+        Assert.True(healthRoot.GetProperty("isHealthy").GetBoolean());
+        Assert.Equal("ok", healthRoot.GetProperty("integrityCheckOutput").GetString());
+    }
+
+    [Fact]
+    public async Task Test8_DatabaseManagement_Retention_And_Pruning()
+    {
+        var adminClient = await CreateAuthenticatedClientAsync("admin", "admin");
+
+        // 1. Get Retention Policies
+        var retRes = await adminClient.GetAsync($"{_kestrelScopeUrl}/api/admin/database/retention");
+        Assert.Equal(HttpStatusCode.OK, retRes.StatusCode);
+        using var retDoc = await JsonDocument.ParseAsync(await retRes.Content.ReadAsStreamAsync());
+        Assert.True(retDoc.RootElement.GetProperty("metricsRetentionDays").GetInt32() > 0);
+
+        // 2. Update Retention Policies
+        var updateRes = await adminClient.PutAsJsonAsync($"{_kestrelScopeUrl}/api/admin/database/retention", new
+        {
+            metricsRetentionDays = 21,
+            tracesRetentionDays = 10,
+            logsRetentionDays = 21,
+            alertsRetentionDays = 90,
+            auditLogsRetentionDays = 180,
+            autoPruneEnabled = true,
+            autoPruneHourUtc = 2,
+            autoBackupEnabled = false,
+            autoBackupHourUtc = 3,
+            backupRetentionCount = 7,
+            storageWarningThresholdMb = 4096
+        });
+        Assert.Equal(HttpStatusCode.OK, updateRes.StatusCode);
+        using var updDoc = await JsonDocument.ParseAsync(await updateRes.Content.ReadAsStreamAsync());
+        Assert.Equal(21, updDoc.RootElement.GetProperty("metricsRetentionDays").GetInt32());
+        Assert.Equal(10, updDoc.RootElement.GetProperty("tracesRetentionDays").GetInt32());
+
+        // 3. Dry-Run Pruning
+        var dryRunRes = await adminClient.PostAsJsonAsync($"{_kestrelScopeUrl}/api/admin/database/prune", new
+        {
+            target = "all",
+            dryRun = true
+        });
+        Assert.Equal(HttpStatusCode.OK, dryRunRes.StatusCode);
+        using var dryDoc = await JsonDocument.ParseAsync(await dryRunRes.Content.ReadAsStreamAsync());
+        Assert.True(dryDoc.RootElement.GetProperty("dryRun").GetBoolean());
+        Assert.True(dryDoc.RootElement.TryGetProperty("deletedCounts", out _));
+
+        // 4. Live Prune Execution
+        var livePruneRes = await adminClient.PostAsJsonAsync($"{_kestrelScopeUrl}/api/admin/database/prune", new
+        {
+            target = "all",
+            dryRun = false,
+            runCheckpoint = true,
+            runVacuum = false
+        });
+        Assert.Equal(HttpStatusCode.OK, livePruneRes.StatusCode);
+        using var liveDoc = await JsonDocument.ParseAsync(await livePruneRes.Content.ReadAsStreamAsync());
+        Assert.False(liveDoc.RootElement.GetProperty("dryRun").GetBoolean());
+        Assert.Equal("success", liveDoc.RootElement.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task Test9_DatabaseManagement_Backup_Restore_And_Audit()
+    {
+        var adminClient = await CreateAuthenticatedClientAsync("admin", "admin");
+
+        // 1. Create Online Backup (Compressed Gzip)
+        var createBackupRes = await adminClient.PostAsJsonAsync($"{_kestrelScopeUrl}/api/admin/database/backups", new
+        {
+            label = "e2e-test",
+            compress = true
+        });
+        Assert.Equal(HttpStatusCode.OK, createBackupRes.StatusCode);
+        using var backupDoc = await JsonDocument.ParseAsync(await createBackupRes.Content.ReadAsStreamAsync());
+        string fileName = backupDoc.RootElement.GetProperty("fileName").GetString()!;
+        Assert.EndsWith(".db.gz", fileName);
+        Assert.True(backupDoc.RootElement.GetProperty("isCompressed").GetBoolean());
+        Assert.NotEmpty(backupDoc.RootElement.GetProperty("checksumSha256").GetString()!);
+
+        // 2. Verify in Backups Catalog
+        var listRes = await adminClient.GetAsync($"{_kestrelScopeUrl}/api/admin/database/backups");
+        Assert.Equal(HttpStatusCode.OK, listRes.StatusCode);
+        using var listDoc = await JsonDocument.ParseAsync(await listRes.Content.ReadAsStreamAsync());
+        var backups = listDoc.RootElement.EnumerateArray().Select(b => b.GetProperty("fileName").GetString()).ToList();
+        Assert.Contains(fileName, backups);
+
+        // 3. Verify BACKUP_CREATE recorded in Audit Logs
+        var auditBeforeRestoreRes = await adminClient.GetAsync($"{_kestrelScopeUrl}/api/admin/database/audit?limit=20");
+        Assert.Equal(HttpStatusCode.OK, auditBeforeRestoreRes.StatusCode);
+        using var auditBeforeDoc = await JsonDocument.ParseAsync(await auditBeforeRestoreRes.Content.ReadAsStreamAsync());
+        var actionsBefore = auditBeforeDoc.RootElement.EnumerateArray().Select(a => a.GetProperty("action").GetString()).ToList();
+        Assert.Contains("BACKUP_CREATE", actionsBefore);
+
+        // 4. Download Backup
+        var downloadRes = await adminClient.GetAsync($"{_kestrelScopeUrl}/api/admin/database/backups/{fileName}/download");
+        Assert.Equal(HttpStatusCode.OK, downloadRes.StatusCode);
+        var bytes = await downloadRes.Content.ReadAsByteArrayAsync();
+        Assert.NotEmpty(bytes);
+
+        // 5. Restore Backup with Safety Rollback Snapshot
+        var restoreRes = await adminClient.PostAsJsonAsync($"{_kestrelScopeUrl}/api/admin/database/restore", new
+        {
+            backupFileName = fileName,
+            confirmationToken = "CONFIRM_RESTORE"
+        });
+        Assert.Equal(HttpStatusCode.OK, restoreRes.StatusCode);
+        using var restoreDoc = await JsonDocument.ParseAsync(await restoreRes.Content.ReadAsStreamAsync());
+        Assert.Equal("success", restoreDoc.RootElement.GetProperty("status").GetString());
+        string safetySnapshot = restoreDoc.RootElement.GetProperty("safetySnapshotFileName").GetString()!;
+        Assert.NotEmpty(safetySnapshot);
+
+        // 6. Query Audit Logs after restore (must contain RESTORE)
+        var auditAfterRes = await adminClient.GetAsync($"{_kestrelScopeUrl}/api/admin/database/audit?limit=20");
+        Assert.Equal(HttpStatusCode.OK, auditAfterRes.StatusCode);
+        using var auditAfterDoc = await JsonDocument.ParseAsync(await auditAfterRes.Content.ReadAsStreamAsync());
+        var actionsAfter = auditAfterDoc.RootElement.EnumerateArray().Select(a => a.GetProperty("action").GetString()).ToList();
+        Assert.Contains("RESTORE", actionsAfter);
+
+        // 7. Cleanup Backups
+        await adminClient.DeleteAsync($"{_kestrelScopeUrl}/api/admin/database/backups/{fileName}");
+        if (!string.IsNullOrEmpty(safetySnapshot))
+        {
+            await adminClient.DeleteAsync($"{_kestrelScopeUrl}/api/admin/database/backups/{safetySnapshot}");
+        }
+    }
 }

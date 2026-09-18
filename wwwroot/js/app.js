@@ -32,16 +32,24 @@ async function checkAuth(isLoginPage = false) {
     document.querySelectorAll('.nav-users-link').forEach(el => {
       el.style.display = isAdmin ? 'inline-flex' : 'none';
     });
+    document.querySelectorAll('.nav-database-link').forEach(el => {
+      el.style.display = isAdmin ? 'inline-flex' : 'none';
+    });
 
     const landingUsersBtn = document.getElementById('landingUsersBtn');
     if (landingUsersBtn) {
       landingUsersBtn.style.display = isAdmin ? 'inline-flex' : 'none';
     }
 
-    if (window.location.pathname.endsWith('/users.html') || window.location.pathname.endsWith('users.html')) {
+    const landingDatabaseBtn = document.getElementById('landingDatabaseBtn');
+    if (landingDatabaseBtn) {
+      landingDatabaseBtn.style.display = isAdmin ? 'inline-flex' : 'none';
+    }
+
+    if (window.location.pathname.endsWith('/users.html') || window.location.pathname.endsWith('users.html') ||
+        window.location.pathname.endsWith('/database.html') || window.location.pathname.endsWith('database.html')) {
       if (!isAdmin) {
         window.location.href = '/dashboard.html';
-        return;
         return null;
       }
     }
@@ -2054,4 +2062,633 @@ async function initFlowMap() {
   }
 }
 
+// ============================================================================
+// Database Management Controller (/database.html)
+// ============================================================================
+let currentDbStorage = null;
+let currentDbPolicies = null;
+let currentDbBackups = [];
 
+function switchDbTab(tabName) {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabName);
+  });
+  document.querySelectorAll('.tab-pane').forEach(pane => {
+    pane.classList.toggle('active', pane.id === `pane-${tabName}`);
+  });
+
+  if (tabName === 'audit') {
+    loadAuditLogs();
+  }
+}
+
+async function initDatabaseManagement() {
+  const user = await checkAuth();
+  if (!user || !user.isAuthenticated) return;
+  if (user.role !== 'Admin') {
+    window.location.href = '/dashboard.html';
+    return;
+  }
+
+  // Bind restore token confirmation input
+  const tokenInput = document.getElementById('restoreConfirmToken');
+  const submitRestoreBtn = document.getElementById('btnSubmitRestore');
+  if (tokenInput && submitRestoreBtn) {
+    tokenInput.addEventListener('input', () => {
+      submitRestoreBtn.disabled = tokenInput.value.trim() !== 'CONFIRM_RESTORE';
+    });
+  }
+
+  // Bind backdrop clicks to close modals
+  const createModal = document.getElementById('createBackupModal');
+  if (createModal) {
+    createModal.addEventListener('click', (e) => {
+      if (e.target === createModal) closeCreateBackupModal();
+    });
+  }
+
+  const pruneModal = document.getElementById('confirmPruneModal');
+  if (pruneModal) {
+    pruneModal.addEventListener('click', (e) => {
+      if (e.target === pruneModal) closeConfirmPruneModal();
+    });
+  }
+
+  await loadDatabaseData();
+}
+
+async function loadDatabaseData() {
+  await Promise.all([
+    loadStorageStats(),
+    loadRetentionPolicies(),
+    loadBackups()
+  ]);
+}
+
+async function loadStorageStats() {
+  try {
+    const res = await fetch('/api/admin/database/storage');
+    if (!res.ok) throw new Error('Failed to load storage stats');
+    currentDbStorage = await res.json();
+    renderStorageStats(currentDbStorage);
+  } catch (err) {
+    console.error('Storage stats error', err);
+  }
+}
+
+function renderStorageStats(stats) {
+  if (!stats) return;
+
+  const statDbSize = document.getElementById('statDbSize');
+  const statWalSize = document.getElementById('statWalSize');
+  const statFreelist = document.getElementById('statFreelist');
+  const statPages = document.getElementById('statPages');
+  const statBackupsSize = document.getElementById('statBackupsSize');
+  const statBackupsCount = document.getElementById('statBackupsCount');
+  const warningBanner = document.getElementById('storageWarningBanner');
+  const warningText = document.getElementById('storageWarningText');
+
+  if (statDbSize) statDbSize.textContent = stats.databaseSizeFormatted;
+  if (statWalSize) statWalSize.textContent = `WAL: ${stats.walSizeFormatted} | SHM: ${stats.shmSizeFormatted}`;
+  if (statFreelist) statFreelist.textContent = stats.freelistSizeFormatted;
+  if (statPages) statPages.textContent = `${Number(stats.freelistCount).toLocaleString()} free pages / ${Number(stats.pageCount).toLocaleString()} total`;
+  if (statBackupsSize) statBackupsSize.textContent = stats.totalBackupsSizeFormatted;
+  if (statBackupsCount) statBackupsCount.textContent = `${stats.backupCount} snapshot archives`;
+
+  // Storage warning threshold check
+  if (warningBanner && warningText) {
+    if (stats.isStorageWarning) {
+      warningText.textContent = stats.storageWarningMessage;
+      warningBanner.style.display = 'flex';
+    } else {
+      warningBanner.style.display = 'none';
+    }
+  }
+
+  // Render Table Breakdown
+  const tableBody = document.getElementById('tablesTableBody');
+  if (tableBody && stats.tables) {
+    tableBody.innerHTML = '';
+    stats.tables.forEach(t => {
+      const tr = document.createElement('tr');
+      const oldestStr = t.oldestRecord ? new Date(t.oldestRecord).toLocaleDateString() : '—';
+      const newestStr = t.newestRecord ? new Date(t.newestRecord).toLocaleDateString() : '—';
+      const spanStr = (t.oldestRecord && t.newestRecord) ? `${oldestStr} → ${newestStr}` : '—';
+
+      tr.innerHTML = `
+        <td style="font-weight:600; color:var(--fui-colorNeutralForeground1); font-family:var(--fui-fontFamilyMonospace); vertical-align:middle;">${escapeHtml(t.tableName)}</td>
+        <td style="font-weight:600; text-align:right; font-family:var(--fui-fontFamilyMonospace); vertical-align:middle; white-space:nowrap;">${Number(t.rowCount).toLocaleString()}</td>
+        <td style="color:var(--fui-colorNeutralForeground3); text-align:right; font-family:var(--fui-fontFamilyMonospace); vertical-align:middle; white-space:nowrap;">${t.estimatedSizeFormatted}</td>
+        <td style="font-size:0.85rem; color:var(--fui-colorNeutralForeground3); vertical-align:middle;">${spanStr}</td>
+        <td style="text-align:right; vertical-align:middle; white-space:nowrap;">
+          <button class="btn-secondary btn-sm" onclick="quickPruneTable('${escapeHtml(t.tableName)}')">Prune</button>
+        </td>
+      `;
+      tableBody.appendChild(tr);
+    });
+  }
+}
+
+async function loadRetentionPolicies() {
+  try {
+    const res = await fetch('/api/admin/database/retention');
+    if (!res.ok) throw new Error('Failed to load retention policies');
+    currentDbPolicies = await res.json();
+    renderRetentionPolicies(currentDbPolicies);
+  } catch (err) {
+    console.error('Retention policy error', err);
+  }
+}
+
+function renderRetentionPolicies(p) {
+  if (!p) return;
+  const mInput = document.getElementById('policyMetricsDays');
+  const tInput = document.getElementById('policyTracesDays');
+  const lInput = document.getElementById('policyLogsDays');
+  const aInput = document.getElementById('policyAlertsDays');
+  const wInput = document.getElementById('policyWarningMb');
+  const autoPrune = document.getElementById('policyAutoPrune');
+  const autoPruneHour = document.getElementById('policyAutoPruneHour');
+  const autoBackup = document.getElementById('policyAutoBackup');
+  const autoBackupHour = document.getElementById('policyAutoBackupHour');
+  const backupRetention = document.getElementById('policyBackupRetentionCount');
+
+  if (mInput) mInput.value = p.metricsRetentionDays;
+  if (tInput) tInput.value = p.tracesRetentionDays;
+  if (lInput) lInput.value = p.logsRetentionDays;
+  if (aInput) aInput.value = p.alertsRetentionDays;
+  if (wInput) wInput.value = p.storageWarningThresholdMb;
+  if (autoPrune) autoPrune.checked = p.autoPruneEnabled;
+  if (autoPruneHour) autoPruneHour.value = p.autoPruneHourUtc;
+  if (autoBackup) autoBackup.checked = p.autoBackupEnabled;
+  if (autoBackupHour) autoBackupHour.value = p.autoBackupHourUtc;
+  if (backupRetention) backupRetention.value = p.backupRetentionCount;
+}
+
+async function handleSaveRetention(e) {
+  e.preventDefault();
+  const payload = {
+    metricsRetentionDays: parseInt(document.getElementById('policyMetricsDays').value, 10),
+    tracesRetentionDays: parseInt(document.getElementById('policyTracesDays').value, 10),
+    logsRetentionDays: parseInt(document.getElementById('policyLogsDays').value, 10),
+    alertsRetentionDays: parseInt(document.getElementById('policyAlertsDays').value, 10),
+    auditLogsRetentionDays: currentDbPolicies?.auditLogsRetentionDays || 180,
+    storageWarningThresholdMb: parseInt(document.getElementById('policyWarningMb').value, 10),
+    autoPruneEnabled: document.getElementById('policyAutoPrune').checked,
+    autoPruneHourUtc: parseInt(document.getElementById('policyAutoPruneHour').value, 10),
+    autoBackupEnabled: document.getElementById('policyAutoBackup').checked,
+    autoBackupHourUtc: parseInt(document.getElementById('policyAutoBackupHour').value, 10),
+    backupRetentionCount: parseInt(document.getElementById('policyBackupRetentionCount').value, 10)
+  };
+
+  try {
+    const res = await fetch('/api/admin/database/retention', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('Failed to update retention policies');
+    currentDbPolicies = await res.json();
+    alert('Retention policies updated successfully.');
+    await loadStorageStats();
+  } catch (err) {
+    alert(`Error updating retention: ${err.message}`);
+  }
+}
+
+async function loadBackups() {
+  try {
+    const res = await fetch('/api/admin/database/backups');
+    if (!res.ok) throw new Error('Failed to load backups');
+    currentDbBackups = await res.json();
+    renderBackups(currentDbBackups);
+  } catch (err) {
+    console.error('Backups catalog error', err);
+  }
+}
+
+function renderBackups(backups) {
+  const tableBody = document.getElementById('backupsTableBody');
+  const restoreSelect = document.getElementById('restoreSelectBackup');
+
+  if (restoreSelect) {
+    restoreSelect.innerHTML = '<option value="">Select a snapshot...</option>';
+    backups.forEach(b => {
+      const opt = document.createElement('option');
+      opt.value = b.fileName;
+      opt.textContent = `${b.fileName} (${b.sizeFormatted} — ${new Date(b.createdAt).toLocaleDateString()})`;
+      restoreSelect.appendChild(opt);
+    });
+  }
+
+  if (!tableBody) return;
+  tableBody.innerHTML = '';
+
+  if (backups.length === 0) {
+    tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--fui-colorNeutralForeground4); padding:2rem;">No backup snapshots found.</td></tr>';
+    return;
+  }
+
+  backups.forEach(b => {
+    const tr = document.createElement('tr');
+    let typeBadge = '<span class="badge badge-gray">Manual</span>';
+    if (b.type === 'Scheduled') {
+      typeBadge = '<span class="badge" style="background:rgba(15,108,189,0.2); color:#479ef5; border:1px solid rgba(15,108,189,0.4);">Scheduled</span>';
+    } else if (b.type === 'SafetySnapshot') {
+      typeBadge = '<span class="badge" style="background:rgba(245,158,11,0.2); color:#f59e0b; border:1px solid rgba(245,158,11,0.4);">Safety Rollback</span>';
+    }
+
+    const shortHash = b.checksumSha256 ? b.checksumSha256.substring(0, 10) + '...' : '—';
+    const createdStr = new Date(b.createdAt).toLocaleString();
+
+    tr.innerHTML = `
+      <td style="vertical-align: middle;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+          <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; fill: var(--fui-colorBrandForeground1); flex-shrink: 0;">
+            <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+          </svg>
+          <span style="font-weight: 600; font-family: var(--fui-fontFamilyMonospace); color: var(--fui-colorNeutralForeground1); font-size: 0.85rem; word-break: break-word;">
+            ${escapeHtml(b.fileName)}
+          </span>
+          ${b.isCompressed ? '<span class="badge" style="background: rgba(16,185,129,0.18); color: #34d399; border: 1px solid rgba(16,185,129,0.3); font-size: 0.7rem; padding: 0.12rem 0.35rem;">GZ</span>' : ''}
+          ${b.label ? `<span class="badge badge-gray" style="font-size: 0.7rem; padding: 0.12rem 0.35rem;">${escapeHtml(b.label)}</span>` : ''}
+        </div>
+      </td>
+      <td style="vertical-align: middle; white-space: nowrap;">${typeBadge}</td>
+      <td style="vertical-align: middle; text-align: right; font-weight: 600; font-size: 0.85rem; font-family: var(--fui-fontFamilyMonospace); white-space: nowrap;">${b.sizeFormatted}</td>
+      <td style="vertical-align: middle; font-size: 0.85rem; color: var(--fui-colorNeutralForeground3); white-space: nowrap;">${createdStr}</td>
+      <td style="vertical-align: middle; font-family: var(--fui-fontFamilyMonospace); font-size: 0.75rem; color: var(--fui-colorNeutralForeground4); white-space: nowrap;" title="${escapeHtml(b.checksumSha256)}">
+        <span class="badge badge-gray mono" style="font-size: 0.75rem; cursor: default;">${shortHash}</span>
+      </td>
+      <td style="vertical-align: middle; text-align: right; white-space: nowrap;">
+        <div style="display: inline-flex; align-items: center; justify-content: flex-end; gap: 0.35rem; width: 100%;">
+          <button class="btn-secondary btn-sm" onclick="downloadBackup('${escapeHtml(b.fileName)}')">Download</button>
+          <button class="btn-secondary btn-sm" onclick="initiateRestoreModal('${escapeHtml(b.fileName)}')">Restore</button>
+          <button class="btn-secondary btn-sm" style="border-color: rgba(239,68,68,0.4); color: #fca5a5;" onclick="deleteBackup('${escapeHtml(b.fileName)}')">Delete</button>
+        </div>
+      </td>
+    `;
+    tableBody.appendChild(tr);
+  });
+}
+
+function openCreateBackupModal() {
+  const modal = document.getElementById('createBackupModal');
+  if (modal) {
+    modal.classList.add('open', 'active');
+    const input = document.getElementById('backupLabelInput');
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+  }
+}
+
+function closeCreateBackupModal() {
+  const modal = document.getElementById('createBackupModal');
+  if (modal) {
+    modal.classList.remove('open', 'active');
+  }
+}
+
+async function handleCreateBackupSubmit(e) {
+  e.preventDefault();
+  const label = document.getElementById('backupLabelInput')?.value?.trim();
+  const compress = document.getElementById('backupCompressInput')?.checked ?? true;
+  const btn = document.getElementById('btnConfirmCreateBackup');
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+  }
+
+  try {
+    const res = await fetch('/api/admin/database/backups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label, compress })
+    });
+    if (!res.ok) throw new Error('Failed to create backup');
+    const created = await res.json();
+    closeCreateBackupModal();
+    alert(`Backup snapshot created successfully:\n${created.fileName} (${created.sizeFormatted})`);
+    await loadBackups();
+    await loadStorageStats();
+  } catch (err) {
+    alert(`Backup error: ${err.message}`);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Generate Snapshot';
+    }
+  }
+}
+
+function downloadBackup(fileName) {
+  window.location.href = `/api/admin/database/backups/${encodeURIComponent(fileName)}/download`;
+}
+
+async function deleteBackup(fileName) {
+  if (!confirm(`Are you sure you want to permanently delete the backup archive '${fileName}'?`)) return;
+
+  try {
+    const res = await fetch(`/api/admin/database/backups/${encodeURIComponent(fileName)}`, {
+      method: 'DELETE'
+    });
+    if (!res.ok) throw new Error('Failed to delete backup');
+    await loadBackups();
+    await loadStorageStats();
+  } catch (err) {
+    alert(`Delete error: ${err.message}`);
+  }
+}
+
+function initiateRestoreModal(fileName) {
+  switchDbTab('restore');
+  const select = document.getElementById('restoreSelectBackup');
+  if (select) select.value = fileName;
+}
+
+async function handleExecuteRestore(e) {
+  e.preventDefault();
+  const backupFileName = document.getElementById('restoreSelectBackup')?.value;
+  const confirmationToken = document.getElementById('restoreConfirmToken')?.value?.trim();
+  const statusBox = document.getElementById('restoreStatusBox');
+  const btn = document.getElementById('btnSubmitRestore');
+
+  if (!backupFileName) {
+    alert('Please select a backup file to restore.');
+    return;
+  }
+
+  if (confirmationToken !== 'CONFIRM_RESTORE') {
+    alert('You must type CONFIRM_RESTORE to authorize this operation.');
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Restoring database (Safety snapshot in progress)...';
+  }
+
+  if (statusBox) {
+    statusBox.style.display = 'block';
+    statusBox.style.background = 'var(--fui-colorNeutralBackground3)';
+    statusBox.style.color = 'var(--fui-colorNeutralForeground1)';
+    statusBox.textContent = 'Initiating safe restore: Creating automated rollback snapshot and replacing database pages...';
+  }
+
+  try {
+    const res = await fetch('/api/admin/database/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backupFileName, confirmationToken })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Restore failed');
+    }
+
+    const result = await res.json();
+    if (statusBox) {
+      statusBox.style.background = 'var(--fui-colorPaletteGreenBackground1)';
+      statusBox.style.color = 'var(--fui-colorPaletteGreenForeground1)';
+      statusBox.innerHTML = `
+        <strong>Restore Successful!</strong><br>
+        Restored from: <code>${escapeHtml(result.restoredFrom)}</code><br>
+        Safety Rollback Snapshot: <code>${escapeHtml(result.safetySnapshotFileName)}</code><br>
+        Elapsed: ${result.elapsedMs}ms | Integrity: ${escapeHtml(result.integrityCheckOutput)}
+      `;
+    }
+    alert('Database restore complete! The system has been synchronized.');
+    await loadDatabaseData();
+  } catch (err) {
+    if (statusBox) {
+      statusBox.style.background = 'var(--fui-colorPaletteRedBackground1)';
+      statusBox.style.color = 'var(--fui-colorPaletteRedForeground1)';
+      statusBox.textContent = `Restore failed: ${err.message}`;
+    }
+    alert(`Restore failed: ${err.message}`);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Authorize & Restore Database Snapshot';
+    }
+  }
+}
+
+// Pruning Logic
+function quickPruneTable(tableName) {
+  switchDbTab('retention');
+  const targetSelect = document.getElementById('pruneTargetSelect');
+  if (targetSelect) {
+    if (tableName === 'MetricSamples') targetSelect.value = 'metrics';
+    else if (tableName === 'Traces') targetSelect.value = 'traces';
+    else if (tableName === 'Logs') targetSelect.value = 'logs';
+    else if (tableName === 'AdminAuditLogs') targetSelect.value = 'audit_logs';
+    else targetSelect.value = 'all';
+  }
+  handleDryRunPrune();
+}
+
+async function handleDryRunPrune() {
+  const target = document.getElementById('pruneTargetSelect')?.value || 'all';
+  const customDaysStr = document.getElementById('pruneCustomDays')?.value;
+  const customRetentionDays = customDaysStr ? parseInt(customDaysStr, 10) : null;
+  const previewBox = document.getElementById('prunePreviewBox');
+  const previewContent = document.getElementById('prunePreviewContent');
+
+  try {
+    const res = await fetch('/api/admin/database/prune', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        target,
+        customRetentionDays,
+        dryRun: true
+      })
+    });
+    if (!res.ok) throw new Error('Simulation failed');
+    const data = await res.json();
+
+    if (previewBox && previewContent) {
+      previewBox.style.display = 'block';
+      let countsHtml = Object.entries(data.deletedCounts)
+        .map(([k, v]) => `• <strong>${k}</strong>: ${Number(v).toLocaleString()} candidate rows`)
+        .join('<br>');
+      if (!countsHtml) countsHtml = 'No candidate rows qualify for pruning under current criteria.';
+
+      previewContent.innerHTML = `
+        ${countsHtml}<br>
+        <strong>Total candidate records:</strong> ${Number(data.totalRowsDeleted).toLocaleString()}<br>
+        <strong>Estimated reclaimable storage:</strong> ${data.freedSizeFormatted}
+      `;
+    }
+  } catch (err) {
+    alert(`Dry-run simulation error: ${err.message}`);
+  }
+}
+
+function openConfirmPruneModal() {
+  const modal = document.getElementById('confirmPruneModal');
+  const summary = document.getElementById('pruneConfirmSummary');
+  const target = document.getElementById('pruneTargetSelect')?.value || 'all';
+  const customDaysStr = document.getElementById('pruneCustomDays')?.value;
+
+  if (summary) {
+    summary.innerHTML = `Target: <strong>${escapeHtml(target.toUpperCase())}</strong> ${customDaysStr ? `(Cutoff override: ${customDaysStr} days)` : '(Using default policy thresholds)'}`;
+  }
+  if (modal) modal.classList.add('open', 'active');
+}
+
+function closeConfirmPruneModal() {
+  const modal = document.getElementById('confirmPruneModal');
+  if (modal) modal.classList.remove('open', 'active');
+}
+
+async function handleExecutePruneConfirmed() {
+  const target = document.getElementById('pruneTargetSelect')?.value || 'all';
+  const customDaysStr = document.getElementById('pruneCustomDays')?.value;
+  const customRetentionDays = customDaysStr ? parseInt(customDaysStr, 10) : null;
+  const runCheckpoint = document.getElementById('pruneCheckpoint')?.checked ?? true;
+  const runVacuum = document.getElementById('pruneVacuum')?.checked ?? false;
+  const btn = document.getElementById('btnExecutePruneConfirm');
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Purging in chunked batches...';
+  }
+
+  try {
+    const res = await fetch('/api/admin/database/prune', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        target,
+        customRetentionDays,
+        dryRun: false,
+        runCheckpoint,
+        runVacuum
+      })
+    });
+    if (!res.ok) throw new Error('Prune execution failed');
+    const data = await res.json();
+    closeConfirmPruneModal();
+    alert(`Prune completed successfully!\nTotal rows purged: ${Number(data.totalRowsDeleted).toLocaleString()}\nEstimated space freed: ${data.freedSizeFormatted}\nElapsed: ${data.elapsedMs}ms`);
+    await loadStorageStats();
+  } catch (err) {
+    alert(`Prune error: ${err.message}`);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Yes, Execute Prune';
+    }
+  }
+}
+
+// Engine Operations
+async function runIntegrityCheck() {
+  try {
+    const res = await fetch('/api/admin/database/health');
+    if (!res.ok) throw new Error('Health check failed');
+    const data = await res.json();
+    alert(`Database Integrity Status: ${data.status.toUpperCase()}\n\nIntegrity Check: ${data.integrityCheckOutput}\nForeign Key Check: ${data.foreignKeyCheckOutput}`);
+  } catch (err) {
+    alert(`Integrity check error: ${err.message}`);
+  }
+}
+
+async function runCheckpoint() {
+  if (!confirm('Run PRAGMA wal_checkpoint(TRUNCATE) to sync and truncate the WAL file?')) return;
+  try {
+    const res = await fetch('/api/admin/database/checkpoint', { method: 'POST' });
+    if (!res.ok) throw new Error('Checkpoint failed');
+    const data = await res.json();
+    alert(data.message || 'WAL Checkpoint completed.');
+    await loadStorageStats();
+  } catch (err) {
+    alert(`Checkpoint error: ${err.message}`);
+  }
+}
+
+async function runVacuum() {
+  if (!confirm('Run VACUUM to rebuild and compact the database? This may take a few seconds on large databases.')) return;
+  try {
+    const res = await fetch('/api/admin/database/vacuum', { method: 'POST' });
+    if (!res.ok) throw new Error('VACUUM failed');
+    const data = await res.json();
+    alert(data.message || 'VACUUM completed.');
+    await loadStorageStats();
+  } catch (err) {
+    alert(`VACUUM error: ${err.message}`);
+  }
+}
+
+// Audit Trail
+async function loadAuditLogs() {
+  const tableBody = document.getElementById('auditTableBody');
+  if (!tableBody) return;
+
+  try {
+    const res = await fetch('/api/admin/database/audit?limit=100');
+    if (!res.ok) throw new Error('Failed to load audit logs');
+    const logs = await res.json();
+
+    tableBody.innerHTML = '';
+    if (logs.length === 0) {
+      tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--fui-colorNeutralForeground4); padding:2rem;">No audit records found.</td></tr>';
+      return;
+    }
+
+    logs.forEach(l => {
+      const tr = document.createElement('tr');
+      const timeStr = new Date(l.timestamp).toLocaleString();
+      let actionBadge = `<span class="badge badge-gray">${escapeHtml(l.action)}</span>`;
+      if (l.action === 'RESTORE' || l.action === 'PRUNE') {
+        actionBadge = `<span class="badge" style="background:rgba(239,68,68,0.2); color:#fca5a5; border:1px solid rgba(239,68,68,0.4);">${escapeHtml(l.action)}</span>`;
+      } else if (l.action === 'BACKUP_CREATE') {
+        actionBadge = `<span class="badge" style="background:rgba(16,185,129,0.2); color:#34d399; border:1px solid rgba(16,185,129,0.4);">${escapeHtml(l.action)}</span>`;
+      }
+
+      tr.innerHTML = `
+        <td style="font-size:0.85rem; color:var(--fui-colorNeutralForeground3);">${timeStr}</td>
+        <td style="font-weight:600; color:var(--fui-colorNeutralForeground1);">${escapeHtml(l.username)}</td>
+        <td>${actionBadge}</td>
+        <td style="font-family:var(--fui-fontFamilyMonospace); font-size:0.8rem; color:var(--fui-colorNeutralForeground2);">${escapeHtml(l.target || '—')}</td>
+        <td style="font-size:0.8rem; color:var(--fui-colorNeutralForeground3); max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(l.detailsJson || '')}">
+          ${escapeHtml(l.detailsJson || '—')}
+        </td>
+        <td style="font-family:var(--fui-fontFamilyMonospace); font-size:0.8rem; color:var(--fui-colorNeutralForeground4);">${escapeHtml(l.ipAddress || '—')}</td>
+      `;
+      tableBody.appendChild(tr);
+    });
+  } catch (err) {
+    tableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#ef4444; padding:2rem;">Error loading audit logs: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+// Window Exports for Database Management UI
+window.switchDbTab = switchDbTab;
+window.initDatabaseManagement = initDatabaseManagement;
+window.loadDatabaseData = loadDatabaseData;
+window.loadStorageStats = loadStorageStats;
+window.loadRetentionPolicies = loadRetentionPolicies;
+window.loadBackups = loadBackups;
+window.handleSaveRetention = handleSaveRetention;
+window.openCreateBackupModal = openCreateBackupModal;
+window.closeCreateBackupModal = closeCreateBackupModal;
+window.handleCreateBackupSubmit = handleCreateBackupSubmit;
+window.downloadBackup = downloadBackup;
+window.deleteBackup = deleteBackup;
+window.initiateRestoreModal = initiateRestoreModal;
+window.handleExecuteRestore = handleExecuteRestore;
+window.quickPruneTable = quickPruneTable;
+window.handleDryRunPrune = handleDryRunPrune;
+window.openConfirmPruneModal = openConfirmPruneModal;
+window.closeConfirmPruneModal = closeConfirmPruneModal;
+window.handleExecutePruneConfirmed = handleExecutePruneConfirmed;
+window.runIntegrityCheck = runIntegrityCheck;
+window.runCheckpoint = runCheckpoint;
+window.runVacuum = runVacuum;
+window.loadAuditLogs = loadAuditLogs;

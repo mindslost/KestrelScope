@@ -84,6 +84,27 @@ public static class DbInitializer
             );
             CREATE INDEX IF NOT EXISTS idx_logs_lookup ON Logs(ServiceName, Timestamp);
             CREATE INDEX IF NOT EXISTS idx_logs_trace ON Logs(TraceId);
+
+            CREATE TABLE IF NOT EXISTS DatabaseSettings (
+                Key TEXT PRIMARY KEY,
+                Value TEXT NOT NULL,
+                UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UpdatedBy TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS AdminAuditLogs (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UserId TEXT,
+                Username TEXT NOT NULL,
+                Action TEXT NOT NULL,
+                Target TEXT,
+                DetailsJson TEXT,
+                IpAddress TEXT,
+                Status TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON AdminAuditLogs(Timestamp);
+            CREATE INDEX IF NOT EXISTS idx_audit_action ON AdminAuditLogs(Action);
         ";
 
         using (var cmd = connection.CreateCommand())
@@ -432,6 +453,33 @@ public static class DbInitializer
 
                 Console.WriteLine("[KestrelScope] Seeded baseline log records.");
             }
+        }
+
+        // Seed default DatabaseSettings if not present
+        var defaultSettings = new Dictionary<string, string>
+        {
+            ["RetentionMetricsDays"] = AppConstants.DatabaseManagement.DefaultRetentionMetricsDays.ToString(),
+            ["RetentionTracesDays"] = AppConstants.DatabaseManagement.DefaultRetentionTracesDays.ToString(),
+            ["RetentionLogsDays"] = AppConstants.DatabaseManagement.DefaultRetentionLogsDays.ToString(),
+            ["RetentionAlertsDays"] = AppConstants.DatabaseManagement.DefaultRetentionAlertsDays.ToString(),
+            ["RetentionAuditLogsDays"] = AppConstants.DatabaseManagement.DefaultRetentionAuditLogsDays.ToString(),
+            ["AutoPruneEnabled"] = AppConstants.DatabaseManagement.DefaultAutoPruneEnabled.ToString().ToLowerInvariant(),
+            ["AutoPruneHourUtc"] = AppConstants.DatabaseManagement.DefaultAutoPruneHourUtc.ToString(),
+            ["AutoBackupEnabled"] = AppConstants.DatabaseManagement.DefaultAutoBackupEnabled.ToString().ToLowerInvariant(),
+            ["AutoBackupHourUtc"] = AppConstants.DatabaseManagement.DefaultAutoBackupHourUtc.ToString(),
+            ["BackupRetentionCount"] = AppConstants.DatabaseManagement.DefaultBackupRetentionCount.ToString(),
+            ["StorageWarningThresholdMb"] = AppConstants.DatabaseManagement.DefaultStorageWarningThresholdMb.ToString()
+        };
+
+        foreach (var kvp in defaultSettings)
+        {
+            using var settingCmd = connection.CreateCommand();
+            settingCmd.CommandText = @"
+                INSERT OR IGNORE INTO DatabaseSettings (Key, Value, UpdatedAt, UpdatedBy)
+                VALUES (@key, @value, CURRENT_TIMESTAMP, 'System');";
+            settingCmd.Parameters.AddWithValue("@key", kvp.Key);
+            settingCmd.Parameters.AddWithValue("@value", kvp.Value);
+            settingCmd.ExecuteNonQuery();
         }
 
         Console.WriteLine("[KestrelScope] SQLite database initialized successfully in WAL mode.");
