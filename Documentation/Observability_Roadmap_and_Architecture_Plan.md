@@ -2,7 +2,7 @@
 
 ## Overview & Background
 
-KestrelScope was engineered as a 100% sovereign, self-hosted, single-binary observability monolith with zero external SaaS dependencies, built on .NET 9 and embedded SQLite in Write-Ahead Logging (WAL) mode.
+KestrelScope was engineered as a 100% sovereign, self-hosted, single-binary observability platform with zero external SaaS dependencies, built on .NET 9 and embedded SQLite in Write-Ahead Logging (WAL) mode.
 
 Having successfully completed the core foundation (OTLP Metrics `/v1/metrics`, Distributed Traces `/v1/traces`, alert rules engine, session auth, air-gapped web UI, and containerized E2E test suite), this plan outlines an industry-aligned roadmap inspired by Google SRE principles (The 4 Golden Signals), OpenTelemetry Semantic Conventions, and best-in-class modern observability platforms (Grafana/Prometheus/Tempo, SigNoz, Datadog).
 

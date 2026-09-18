@@ -1,4 +1,4 @@
-# KestrelScope — Self-Hosted .NET Observability Monolith
+# KestrelScope — Self-Hosted .NET Observability Platform
 
 [![CI](https://github.com/mindslost/KestrelScope/actions/workflows/ci.yml/badge.svg)](https://github.com/mindslost/KestrelScope/actions/workflows/ci.yml)
 [![.NET 9](https://img.shields.io/badge/.NET-9.0-512bd4.svg)](https://dotnet.microsoft.com/download/dotnet/9.0)
@@ -6,7 +6,7 @@
 [![Design System](https://img.shields.io/badge/Design%20System-Microsoft%20Fluent%202-0f6cbd.svg)](https://fluent2.microsoft.design/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-KestrelScope is a **100% sovereign, self-hosted, single-binary observability monolith** engineered in .NET 9 and SQLite. It provides native OpenTelemetry (OTLP) ingestion for **Metrics**, **Distributed Traces**, and **Structured Logs** with bidirectional trace correlation, an embedded relational metastore, a background alert evaluation engine, and a modern web dashboard built on the **Microsoft Fluent 2 Design System**.
+KestrelScope is a **100% sovereign, self-hosted, single-binary observability platform** engineered in .NET 9 and SQLite. It provides native OpenTelemetry (OTLP) ingestion for **Metrics**, **Distributed Traces**, and **Structured Logs** with bidirectional trace correlation, an embedded relational metastore, a background alert evaluation engine, and a modern web dashboard built on the **Microsoft Fluent 2 Design System**.
 
 ---
 
@@ -17,7 +17,7 @@ For detailed setup guides, Docker deployment, and code integration examples acro
 ---
 
 ## Architectural Mandates
-1. **Single-Binary Monolith**: Runs as a single process containing web API endpoints, static UI assets (`wwwroot`), database engine, and background workers. No external database dependencies (no ClickHouse, PostgreSQL, or Redis) and zero SaaS vendor locks.
+1. **Single-Binary Architecture**: Runs as a single process containing web API endpoints, static UI assets (`wwwroot`), database engine, and background workers. No external database dependencies (no ClickHouse, PostgreSQL, or Redis) and zero SaaS vendor locks.
 2. **Air-Gapped Operation**: 100% sovereign. All static frontend assets (HTML, Fluent CSS tokens, JS, Chart.js, embedded SVG Fluent System Icons) are served locally from `wwwroot/`. Zero external CDN calls or external font downloads required.
 3. **High-Concurrency Persistence**: Uses SQLite in Write-Ahead Logging (WAL) mode (`PRAGMA journal_mode=WAL;`) with Dapper for high-throughput, concurrent, lock-free read/write ingestion.
 4. **Three Pillars of Observability**: Ingests standard OpenTelemetry payloads over HTTP:

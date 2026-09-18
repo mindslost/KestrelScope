@@ -30,7 +30,7 @@ A complete operational guide for deploying **KestrelScope** and integrating it w
 
 ## 1. Platform Overview & Architecture
 
-KestrelScope is an **air-gapped, sovereign, single-binary observability monolith** engineered in .NET 9. It provides complete observability across the three core telemetry pillars without requiring external databases (no ClickHouse, PostgreSQL, or Redis), third-party SaaS agents, or external CDN dependencies.
+KestrelScope is an **air-gapped, sovereign, single-binary observability platform** engineered in .NET 9. It provides complete observability across the three core telemetry pillars without requiring external databases (no ClickHouse, PostgreSQL, or Redis), third-party SaaS agents, or external CDN dependencies.
 
 ```
                      ┌──────────────────────────────────────────────┐
@@ -42,7 +42,7 @@ KestrelScope is an **air-gapped, sovereign, single-binary observability monolith
                     Metrics │         Traces │          Logs │
                             ▼                ▼               ▼
 ┌───────────────────────────────────────────────────────────────────────────┐
-│                           KestrelScope Monolith                           │
+│                           KestrelScope Platform                           │
 │                                                                           │
 │  ┌─────────────────────── OTLP Ingestion Engine ───────────────────────┐  │
 │  │   POST /v1/metrics         POST /v1/traces         POST /v1/logs    │  │
@@ -164,7 +164,7 @@ For continuous production operation on a Linux server:
 2. Create `/etc/systemd/system/kestrelscope.service`:
    ```ini
    [Unit]
-   Description=KestrelScope Observability Monolith
+   Description=KestrelScope Observability Platform
    After=network.target
 
    [Service]

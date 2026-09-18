@@ -1,5 +1,5 @@
 /**
- * KestrelScope — Sovereign Observability Monolith
+ * KestrelScope — Sovereign Observability Platform
  * Frontend Application Client
  */
 

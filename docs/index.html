@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KestrelScope — The 100% Sovereign Observability Platform</title>
+  <meta name="description" content="Self-hosted .NET 9 OpenTelemetry observability platform with embedded SQLite WAL storage. Zero SaaS telemetry tax, zero external database clusters, 100% air-gapped sovereign.">
+  
+  <!-- OpenGraph / Social Meta -->
+  <meta property="og:title" content="KestrelScope — Sovereign Observability Platform">
+  <meta property="og:description" content="All your metrics, traces, and logs in a single .NET 9 binary with embedded SQLite WAL. Zero SaaS tax.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://mindslost.github.io/KestrelScope/">
+
+  <!-- Fonts & CDNs -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Fluent 2 Dark Theme Stylesheet -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Sticky Glassmorphic Header -->
+  <header class="header">
+    <div class="container">
+      <a href="#" class="nav-brand">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2zm1 17.93V18a2 2 0 0 0-2-2h-1v-2h2a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1H9.83a3.001 3.001 0 0 0-2.83-2V4.07A8.006 8.006 0 0 1 19.93 11H18a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h1.93A8.01 8.01 0 0 1 13 19.93z"/>
+        </svg>
+        <span>KestrelScope</span>
+        <span class="brand-badge">v1.0 Sovereign</span>
+      </a>
+
+      <ul class="nav-menu">
+        <li><a href="#showcase" class="nav-link">Live Test Drive</a></li>
+        <li><a href="#highlights" class="nav-link">Architecture</a></li>
+        <li><a href="#calculator" class="nav-link">ROI Calculator</a></li>
+        <li><a href="#comparison" class="nav-link">Comparison</a></li>
+        <li><a href="#quickstart" class="nav-link">Quickstart</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <a href="https://github.com/mindslost/KestrelScope" target="_blank" rel="noopener noreferrer" class="btn-github">
+          <svg viewBox="0 0 24 24"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.1-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2z"/></svg>
+          <span>Star</span>
+          <span class="star-count">GitHub</span>
+        </a>
+        <a href="#quickstart" class="btn-cta">Deploy Now</a>
+        <button class="mobile-toggle" aria-label="Toggle Navigation">
+          <svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-pill">
+        <span class="pulse-dot"></span>
+        <span>100% Sovereign • Zero SaaS Tax • Air-Gapped Ready</span>
+      </div>
+
+      <h1 class="hero-title">
+        All Your Metrics, Traces, and Logs.<br>
+        <span class="hero-highlight">One Binary. Zero SaaS Bill.</span>
+      </h1>
+
+      <p class="hero-subtitle">
+        KestrelScope is a high-performance .NET 9 OpenTelemetry observability platform with embedded SQLite WAL storage. Replace bloated multi-container clusters and recurring cloud invoices with a single sovereign process.
+      </p>
+
+      <div class="hero-ctas">
+        <a href="#quickstart" class="btn-cta">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+          <span>Deploy in 60 Seconds</span>
+        </a>
+        <a href="https://github.com/mindslost/KestrelScope" target="_blank" rel="noopener noreferrer" class="btn-secondary">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.1-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2z"/></svg>
+          <span>Explore Source Code</span>
+        </a>
+      </div>
+
+      <!-- Quick Docker Run One-Liner -->
+      <div class="hero-terminal">
+        <div class="terminal-header">
+          <div class="terminal-dots">
+            <span class="terminal-dot red"></span>
+            <span class="terminal-dot yellow"></span>
+            <span class="terminal-dot green"></span>
+          </div>
+          <span class="terminal-title">bash — instant start</span>
+          <span></span>
+        </div>
+        <div class="terminal-body">
+          <div class="terminal-cmd">
+            <span>$</span>docker run -d -p 5000:5000 -v kestrel_data:/app/data mindslost/kestrelscope
+          </div>
+          <button class="btn-copy" data-copy="docker run -d -p 5000:5000 -v kestrel_data:/app/data mindslost/kestrelscope">
+            <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+            <span>Copy</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interactive Test-Drive Showcase -->
+  <section class="showcase" id="showcase">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-tag">Interactive Console Preview</span>
+        <h2 class="section-title">Test Drive the KestrelScope Interface</h2>
+        <p class="section-desc">
+          Engineered with the Microsoft Fluent 2 Dark Theme. Explore live simulated microservice topology, telemetry charts, execution waterfalls, and correlated structured logs.
+        </p>
+      </div>
+
+      <div class="showcase-window">
+        <!-- Tabs bar -->
+        <div class="showcase-tabs-bar">
+          <div class="showcase-tabs">
+            <button class="showcase-tab active" data-tab="flowmap">
+              <svg viewBox="0 0 24 24"><path d="M16 2a3 3 0 0 0-2.83 2H10.83A3.001 3.001 0 0 0 8 2a3 3 0 0 0-3 3c0 1.3.84 2.4 2 2.82V12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2H9V9.82c.48-.18.9-.48 1.23-.85l2.6 1.3c-.02.18-.03.36-.03.55a3 3 0 1 0 6 0 3 3 0 0 0-2.8-3v-1.64c1.16-.41 2-1.52 2-2.82a3 3 0 0 0-3-3z"/></svg>
+              <span>Application Flow Map</span>
+            </button>
+            <button class="showcase-tab" data-tab="metrics">
+              <svg viewBox="0 0 24 24"><path d="M3 3a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h18a1 1 0 1 0 0-2H4V4a1 1 0 0 0-1-1zm5 14a1 1 0 0 0 1-1v-4a1 1 0 1 0-2 0v4a1 1 0 0 0 1 1zm5 0a1 1 0 0 0 1-1V8a1 1 0 1 0-2 0v8a1 1 0 0 0 1 1zm5 0a1 1 0 0 0 1-1v-7a1 1 0 1 0-2 0v7a1 1 0 0 0 1 1z"/></svg>
+              <span>Metrics Explorer</span>
+            </button>
+            <button class="showcase-tab" data-tab="traces">
+              <svg viewBox="0 0 24 24"><path d="M10 2a8 8 0 0 1 6.32 12.906l4.387 4.387a1 1 0 0 1-1.414 1.414l-4.387-4.387A8 8 0 1 1 10 2zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12zm-1 3a1 1 0 0 1 2 0v3.586l2.707 2.707a1 1 0 0 1-1.414 1.414l-3-3A1 1 0 0 1 9 11V7z"/></svg>
+              <span>Distributed Traces</span>
+            </button>
+            <button class="showcase-tab" data-tab="logs">
+              <svg viewBox="0 0 24 24"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H14l6 6v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 19.5v-15zM13.5 3.5V8H18l-4.5-4.5zM7 11a1 1 0 0 0 0 2h10a1 1 0 1 0 0-2H7zm0 4a1 1 0 1 0 0 2h10a1 1 0 1 0 0-2H7z"/></svg>
+              <span>Correlated Logs</span>
+            </button>
+          </div>
+
+          <div class="showcase-live-status">
+            <span class="pulse-dot"></span>
+            <span>Live Telemetry Connected</span>
+          </div>
+        </div>
+
+        <!-- Tab 1: Flow Map -->
+        <div class="showcase-content">
+          <div class="showcase-panel active" id="panel-flowmap">
+            <div class="flowmap-demo-container">
+              <div class="flowmap-viewport">
+                <svg id="flowmapCanvas" class="flowmap-svg" viewBox="0 0 640 360" preserveAspectRatio="xMidYMid meet"></svg>
+              </div>
+
+              <div class="flowmap-drawer">
+                <div class="drawer-title">
+                  <span id="drawerServiceName">order-service</span>
+                  <span id="drawerStatusBadge" class="brand-badge">NORMAL</span>
+                </div>
+
+                <div class="drawer-stat">
+                  <span class="drawer-stat-label">Inbound Traffic</span>
+                  <span class="drawer-stat-val" id="drawerRps">310 req/s</span>
+                </div>
+
+                <div class="drawer-stat">
+                  <span class="drawer-stat-label">Average Latency</span>
+                  <span class="drawer-stat-val" id="drawerLatency">48ms</span>
+                </div>
+
+                <div class="drawer-stat">
+                  <span class="drawer-stat-label">Error Rate (5xx)</span>
+                  <span class="drawer-stat-val" id="drawerErrorRate">0.12%</span>
+                </div>
+
+                <div class="drawer-stat">
+                  <span class="drawer-stat-label">Active Instances</span>
+                  <span class="drawer-stat-val" id="drawerInstances">2 Nodes</span>
+                </div>
+
+                <p style="font-size:0.8rem; color:var(--text-muted); line-height:1.4;">
+                  💡 Click any node on the topology canvas to inspect live service health and inbound flow metrics.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 2: Metrics -->
+          <div class="showcase-panel" id="panel-metrics">
+            <div class="metrics-demo-container">
+              <div class="metrics-kpi-bar">
+                <div class="kpi-card">
+                  <div class="kpi-title">Ingested RPS</div>
+                  <div class="kpi-value">1,480 /s</div>
+                  <div class="kpi-delta">↑ 12% vs last hr</div>
+                </div>
+                <div class="kpi-card">
+                  <div class="kpi-title">P95 Latency</div>
+                  <div class="kpi-value">48 ms</div>
+                  <div class="kpi-delta">↓ 4ms optimal</div>
+                </div>
+                <div class="kpi-card">
+                  <div class="kpi-title">Error Rate</div>
+                  <div class="kpi-value">0.08%</div>
+                  <div class="kpi-delta">✓ within SLA</div>
+                </div>
+                <div class="kpi-card">
+                  <div class="kpi-title">Monitored Services</div>
+                  <div class="kpi-value">6</div>
+                  <div class="kpi-delta">100% healthy</div>
+                </div>
+              </div>
+
+              <div class="metrics-chart-box">
+                <div class="chart-controls">
+                  <span style="font-weight:600; font-size:0.95rem;">Request Duration Distribution (HTTP GET/POST)</span>
+                  <div class="chart-filters">
+                    <button class="btn-filter active">15m</button>
+                    <button class="btn-filter">1h</button>
+                    <button class="btn-filter">24h</button>
+                  </div>
+                </div>
+                <div style="height: 250px; position: relative;">
+                  <canvas id="metricsCanvas"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 3: Traces Waterfall -->
+          <div class="showcase-panel" id="panel-traces">
+            <div class="traces-demo-container">
+              <div class="trace-waterfall-header">
+                <span>Operation / Service Span</span>
+                <span>Execution Timeline (142ms total)</span>
+                <span>Duration</span>
+              </div>
+
+              <div class="trace-span-row">
+                <div class="span-info">
+                  <span style="color:#38bdf8; font-family:var(--font-mono); font-size:0.75rem;">[GET]</span>
+                  <span>/api/orders/checkout</span>
+                </div>
+                <div class="span-bar-container">
+                  <div class="span-bar" style="width: 100%; margin-left: 0%;"></div>
+                </div>
+                <div class="span-duration">142 ms</div>
+              </div>
+
+              <div class="trace-span-row">
+                <div class="span-info" style="padding-left: 1.25rem;">
+                  <span style="color:#818cf8; font-family:var(--font-mono); font-size:0.75rem;">auth</span>
+                  <span>jwt.verify_session</span>
+                </div>
+                <div class="span-bar-container">
+                  <div class="span-bar" style="width: 12%; margin-left: 2%;"></div>
+                </div>
+                <div class="span-duration">16 ms</div>
+              </div>
+
+              <div class="trace-span-row">
+                <div class="span-info" style="padding-left: 1.25rem;">
+                  <span style="color:#f59e0b; font-family:var(--font-mono); font-size:0.75rem;">http</span>
+                  <span>payment-api:charge</span>
+                </div>
+                <div class="span-bar-container">
+                  <div class="span-bar" style="width: 58%; margin-left: 16%;"></div>
+                </div>
+                <div class="span-duration">82 ms</div>
+              </div>
+
+              <div class="trace-span-row">
+                <div class="span-info" style="padding-left: 2.5rem;">
+                  <span style="color:#fbbf24; font-family:var(--font-mono); font-size:0.75rem;">sql</span>
+                  <span>SELECT balance FROM acct</span>
+                </div>
+                <div class="span-bar-container">
+                  <div class="span-bar db" style="width: 22%; margin-left: 20%;"></div>
+                </div>
+                <div class="span-duration">31 ms</div>
+              </div>
+
+              <div class="trace-span-row">
+                <div class="span-info" style="padding-left: 1.25rem;">
+                  <span style="color:#10b981; font-family:var(--font-mono); font-size:0.75rem;">grpc</span>
+                  <span>inventory-svc:reserve</span>
+                </div>
+                <div class="span-bar-container">
+                  <div class="span-bar" style="width: 24%; margin-left: 74%;"></div>
+                </div>
+                <div class="span-duration">34 ms</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 4: Correlated Logs -->
+          <div class="showcase-panel" id="panel-logs">
+            <div class="logs-demo-container">
+              <div class="logs-toolbar">
+                <input type="text" id="logSearchInput" class="logs-search" placeholder="Filter logs by keyword, service, or trace ID...">
+              </div>
+              <table class="log-table">
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Level</th>
+                    <th>Service</th>
+                    <th>Message</th>
+                    <th>Trace Correlation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr class="log-row">
+                    <td>10:55:12.102</td>
+                    <td><span class="log-badge info">INFO</span></td>
+                    <td>api-gateway</td>
+                    <td>Inbound request received [POST /api/orders/checkout]</td>
+                    <td><span class="trace-pill">4bf92f35...</span></td>
+                  </tr>
+                  <tr class="log-row">
+                    <td>10:55:12.118</td>
+                    <td><span class="log-badge info">INFO</span></td>
+                    <td>order-service</td>
+                    <td>Order #8491 instantiated for customer cus_9921</td>
+                    <td><span class="trace-pill">4bf92f35...</span></td>
+                  </tr>
+                  <tr class="log-row">
+                    <td>10:55:12.190</td>
+                    <td><span class="log-badge warn">WARN</span></td>
+                    <td>payment-api</td>
+                    <td>High latency recorded during gateway handshake (82ms)</td>
+                    <td><span class="trace-pill">4bf92f35...</span></td>
+                  </tr>
+                  <tr class="log-row">
+                    <td>10:55:12.244</td>
+                    <td><span class="log-badge info">INFO</span></td>
+                    <td>inventory-svc</td>
+                    <td>Stock reserved for SKU-90412; allocation confirmed</td>
+                    <td><span class="trace-pill">4bf92f35...</span></td>
+                  </tr>
+                  <tr class="log-row">
+                    <td>10:55:12.256</td>
+                    <td><span class="log-badge info">INFO</span></td>
+                    <td>order-service</td>
+                    <td>Order completed successfully. Status code 200 OK</td>
+                    <td><span class="trace-pill">4bf92f35...</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Architectural Bento Grid -->
+  <section class="bento" id="highlights">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-tag">Architecture & Engineering</span>
+        <h2 class="section-title">Built for Sovereignty, Speed, and Simplicity</h2>
+        <p class="section-desc">
+          No external database clusters. No vendor lock-in. No SaaS invoices. Engineered as a single binary with zero operational friction.
+        </p>
+      </div>
+
+      <div class="bento-grid">
+        <!-- Card 1 (Span 2) -->
+        <div class="bento-card span-2">
+          <div class="bento-icon">
+            <svg viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
+          </div>
+          <h3 class="bento-title">Single-Binary Architecture</h3>
+          <p class="bento-desc">
+            KestrelScope bundles the Kestrel web server, static UI assets, OTLP ingestion controllers, background alert evaluation workers, and an embedded SQLite database inside a single compiled .NET 9 binary. No ClickHouse, PostgreSQL, or Redis containers to maintain.
+          </p>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="bento-card">
+          <div class="bento-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
+          </div>
+          <h3 class="bento-title">100% Air-Gapped & Sovereign</h3>
+          <p class="bento-desc">
+            Telemetry never leaves your infrastructure. Strict zero-CDN frontend design ensures complete operational compliance with HIPAA, SOC2, defense, and high-security air-gapped data centers.
+          </p>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="bento-card">
+          <div class="bento-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+          </div>
+          <h3 class="bento-title">Standard OpenTelemetry (OTLP)</h3>
+          <p class="bento-desc">
+            Zero proprietary agents. Send standard OTLP/HTTP payloads directly from any language SDK (.NET, Go, Python, Java, Node.js) or route through OpenTelemetry Collector sidecars.
+          </p>
+        </div>
+
+        <!-- Card 4 (Span 2) -->
+        <div class="bento-card span-2">
+          <div class="bento-icon">
+            <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l7.59-7.59L21 8l-9 9z"/></svg>
+          </div>
+          <h3 class="bento-title">High-Throughput SQLite WAL & Dapper</h3>
+          <p class="bento-desc">
+            Configured with Write-Ahead Logging (<code>PRAGMA journal_mode=WAL;</code>) and optimized Dapper queries. Ingest thousands of spans, metrics, and structured logs per second concurrently with zero lock contention and microsecond read latencies.
+          </p>
+        </div>
+
+        <!-- Card 5 -->
+        <div class="bento-card">
+          <div class="bento-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+          </div>
+          <h3 class="bento-title">Automated Alert Worker</h3>
+          <p class="bento-desc">
+            Embedded background worker evaluates threshold rules every 60s and dispatches instant webhooks to Slack, Discord, Microsoft Teams, or custom incident management systems.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interactive SaaS Tax ROI Calculator -->
+  <section class="calculator" id="calculator">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-tag">ROI & Cost Transparency</span>
+        <h2 class="section-title">Calculate Your Telemetry SaaS Savings</h2>
+        <p class="section-desc">
+          See how much your organization saves by eliminating per-host charges, custom metric premiums, and gigabyte-based log ingestion fees.
+        </p>
+      </div>
+
+      <div class="calc-box">
+        <div class="calc-controls">
+          <div class="calc-slider-group">
+            <div class="slider-label-row">
+              <span>Monitored Microservice Hosts</span>
+              <span class="slider-val" id="hostsVal">12 hosts</span>
+            </div>
+            <input type="range" id="hostsSlider" class="calc-range" min="1" max="100" value="12">
+          </div>
+
+          <div class="calc-slider-group">
+            <div class="slider-label-row">
+              <span>Daily Telemetry Ingestion (GB / day)</span>
+              <span class="slider-val" id="gbVal">25 GB/day</span>
+            </div>
+            <input type="range" id="gbSlider" class="calc-range" min="1" max="300" value="25">
+          </div>
+
+          <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+            * SaaS estimates calculated from industry-standard APM list prices ($15/host + $5 custom metrics + $0.10/GB log ingestion & retention).
+          </p>
+        </div>
+
+        <div class="calc-results">
+          <div class="result-row">
+            <span class="result-label">Traditional SaaS APM Bill:</span>
+            <span class="result-cost-saas" id="calcSaasCost">$315 / mo</span>
+          </div>
+
+          <div class="result-row">
+            <span class="result-label">KestrelScope Platform Cost:</span>
+            <span class="result-cost-kestrel">$0 / mo (100% Free)</span>
+          </div>
+
+          <div class="savings-card">
+            <span class="savings-title">Estimated Annual Net Savings</span>
+            <span class="savings-amount" id="calcSavings">$3,780 / yr</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Comparison Table -->
+  <section class="comparison" id="comparison">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-tag">Competitive Benchmark</span>
+        <h2 class="section-title">How Does KestrelScope Compare?</h2>
+        <p class="section-desc">
+          Honest comparison across architecture, maintenance overhead, and data ownership.
+        </p>
+      </div>
+
+      <div class="comparison-table-wrapper">
+        <table class="comparison-table">
+          <thead>
+            <tr>
+              <th>Feature / Capability</th>
+              <th class="highlight">KestrelScope</th>
+              <th>Commercial SaaS (Datadog / New Relic)</th>
+              <th>Grafana LGTM Stack</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Architecture</strong></td>
+              <td class="highlight"><span class="check-yes">✓ Single .NET 9 Binary</span></td>
+              <td>Proprietary Agent + Cloud Cluster</td>
+              <td>Multi-container (Prometheus + Tempo + Loki)</td>
+            </tr>
+            <tr>
+              <td><strong>Storage Engine</strong></td>
+              <td class="highlight"><span class="check-yes">✓ Embedded SQLite (WAL)</span></td>
+              <td>Vendor Blackbox Cloud</td>
+              <td>ClickHouse / Object Storage / MinIO</td>
+            </tr>
+            <tr>
+              <td><strong>Air-Gapped Operation</strong></td>
+              <td class="highlight"><span class="check-yes">✓ 100% Native (Zero CDN)</span></td>
+              <td><span class="check-no">✗ Impossible (Cloud only)</span></td>
+              <td>Possible (Complex cluster setup)</td>
+            </tr>
+            <tr>
+              <td><strong>OpenTelemetry Standard</strong></td>
+              <td class="highlight"><span class="check-yes">✓ Native OTLP/HTTP 1.0</span></td>
+              <td>Proprietary with OTLP gateway</td>
+              <td><span class="check-yes">✓ Native</span></td>
+            </tr>
+            <tr>
+              <td><strong>Setup Time</strong></td>
+              <td class="highlight"><span class="check-yes">✓ &lt; 60 seconds</span></td>
+              <td>Hours (Agent config & sales calls)</td>
+              <td>Days (Kubernetes Helm charts)</td>
+            </tr>
+            <tr>
+              <td><strong>License & Ingestion Cost</strong></td>
+              <td class="highlight"><span class="check-yes">✓ $0 (MIT Open Source)</span></td>
+              <td><span class="check-no">✗ $$$$ Per Host & Per GB</span></td>
+              <td>Infrastructure & DevOps engineer time</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quickstart & Integration -->
+  <section class="quickstart" id="quickstart">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-tag">Instant Integration</span>
+        <h2 class="section-title">Start Ingesting Telemetry in Under 2 Minutes</h2>
+        <p class="section-desc">
+          Choose your favorite runtime or tool and connect to KestrelScope's standard OTLP receivers.
+        </p>
+      </div>
+
+      <div class="quickstart-box">
+        <div class="code-tabs-header">
+          <button class="code-tab active" data-code="docker">docker-compose.yml</button>
+          <button class="code-tab" data-code="dotnet">.NET 8/9 C#</button>
+          <button class="code-tab" data-code="node">Node.js</button>
+          <button class="code-tab" data-code="python">Python</button>
+          <button class="code-tab" data-code="curl">cURL</button>
+        </div>
+
+        <div class="code-content">
+          <!-- Docker Compose -->
+          <div class="code-panel active" id="code-docker">
+            <button class="btn-copy">
+              <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+              <span>Copy</span>
+            </button>
+            <pre><code>services:
+  kestrelscope:
+    image: mindslost/kestrelscope:latest
+    container_name: kestrelscope
+    ports:
+      - "5000:5000"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+    volumes:
+      - kestrel_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  kestrel_data:</code></pre>
+          </div>
+
+          <!-- .NET -->
+          <div class="code-panel" id="code-dotnet">
+            <button class="btn-copy">
+              <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+              <span>Copy</span>
+            </button>
+            <pre><code>// Program.cs (.NET 8 / 9)
+builder.Services.AddOpenTelemetry()
+    .WithTracing(tracing => tracing
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddOtlpExporter(opt => opt.Endpoint = new Uri("http://localhost:5000/v1/traces")))
+    .WithMetrics(metrics => metrics
+        .AddAspNetCoreInstrumentation()
+        .AddOtlpExporter(opt => opt.Endpoint = new Uri("http://localhost:5000/v1/metrics")));</code></pre>
+          </div>
+
+          <!-- Node.js -->
+          <div class="code-panel" id="code-node">
+            <button class="btn-copy">
+              <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+              <span>Copy</span>
+            </button>
+            <pre><code>// tracing.js (Node.js OpenTelemetry SDK)
+const { NodeSDK } = require('@opentelemetry/sdk-node');
+const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
+
+const sdk = new NodeSDK({
+  traceExporter: new OTLPTraceExporter({
+    url: 'http://localhost:5000/v1/traces',
+  }),
+});
+sdk.start();</code></pre>
+          </div>
+
+          <!-- Python -->
+          <div class="code-panel" id="code-python">
+            <button class="btn-copy">
+              <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+              <span>Copy</span>
+            </button>
+            <pre><code># Standard OpenTelemetry environment variables
+export OTEL_SERVICE_NAME="payment-api"
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:5000"
+export OTEL_EXPORTER_OTLP_PROTOCOL="http/json"
+
+# Run your FastAPI / Flask service with automatic instrumentation:
+opentelemetry-instrument uvicorn main:app --port 8000</code></pre>
+          </div>
+
+          <!-- cURL -->
+          <div class="code-panel" id="code-curl">
+            <button class="btn-copy">
+              <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+              <span>Copy</span>
+            </button>
+            <pre><code># Test Log Ingestion with Bidirectional Trace Correlation
+curl -X POST http://localhost:5000/v1/logs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resourceLogs": [{
+      "resource": { "attributes": [{ "key": "service.name", "value": { "stringValue": "payment-api" } }] },
+      "scopeLogs": [{
+        "logRecords": [{
+          "timeUnixNano": "'$(date +%s%N)'",
+          "severityText": "INFO",
+          "severityNumber": 9,
+          "body": { "stringValue": "Payment authorized successfully" },
+          "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+          "spanId": "00f067aa0ba902b7"
+        }]
+      }]
+    }]
+  }'</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <div class="nav-brand">
+            <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2zm1 17.93V18a2 2 0 0 0-2-2h-1v-2h2a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1H9.83a3.001 3.001 0 0 0-2.83-2V4.07A8.006 8.006 0 0 1 19.93 11H18a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h1.93A8.01 8.01 0 0 1 13 19.93z"/></svg>
+            <span>KestrelScope</span>
+          </div>
+          <p>
+            The 100% sovereign, self-hosted, single-binary OpenTelemetry observability platform built in .NET 9 and embedded SQLite WAL.
+          </p>
+        </div>
+
+        <div class="footer-column">
+          <h4>Product</h4>
+          <ul class="footer-links">
+            <li><a href="#showcase">Flow Map</a></li>
+            <li><a href="#showcase">Metrics Explorer</a></li>
+            <li><a href="#showcase">Distributed Traces</a></li>
+            <li><a href="#showcase">Correlated Logs</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-column">
+          <h4>Resources</h4>
+          <ul class="footer-links">
+            <li><a href="https://github.com/mindslost/KestrelScope" target="_blank" rel="noopener noreferrer">GitHub Repository</a></li>
+            <li><a href="https://github.com/mindslost/KestrelScope/blob/main/Documentation/User_Guide_Setup_and_Integration.md" target="_blank" rel="noopener noreferrer">Integration Guide</a></li>
+            <li><a href="https://github.com/mindslost/KestrelScope/blob/main/Documentation/Observability_Roadmap_and_Architecture_Plan.md" target="_blank" rel="noopener noreferrer">Architecture Plan</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-column">
+          <h4>Open Source</h4>
+          <ul class="footer-links">
+            <li><a href="https://github.com/mindslost/KestrelScope/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a></li>
+            <li><a href="https://opentelemetry.io/" target="_blank" rel="noopener noreferrer">OpenTelemetry 1.0</a></li>
+            <li><a href="https://fluent2.microsoft.design/" target="_blank" rel="noopener noreferrer">Fluent 2 Design</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <span>© 2026 KestrelScope Project. Released under the MIT License.</span>
+        <span>Crafted for high-sovereignty teams and zero SaaS tax.</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="js/flowmap-demo.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

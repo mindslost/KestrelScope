@@ -1,14 +1,14 @@
-Implementation Guide: KestrelScope Single-Binary Monolith Architecture
+Implementation Guide: KestrelScope Single-Binary Platform Architecture
 
-1. KestrelScope Monolithic Architecture Overview
+1. KestrelScope Architecture Overview
 
-The KestrelScope "Option 1" architecture is a self-contained observability monolith designed for high-performance telemetry processing within a single ASP.NET Core process. By consolidating ingestion, storage, and visualization, KestrelScope eliminates the operational overhead and "observability deadlock" risks associated with managing distributed collector-database-UI clusters.
+The KestrelScope "Option 1" architecture is a self-contained observability platform designed for high-performance telemetry processing within a single ASP.NET Core process. By consolidating ingestion, storage, and visualization, KestrelScope eliminates the operational overhead and "observability deadlock" risks associated with managing distributed collector-database-UI clusters.
 
-This monolithic model prioritizes a minimal resource footprint by utilizing the shared ASP.NET Core runtime and eliminating the CPU-intensive cross-process serialization (gRPC/HTTP) typically required between OTel components.
+This single-process model prioritizes a minimal resource footprint by utilizing the shared ASP.NET Core runtime and eliminating the CPU-intensive cross-process serialization (gRPC/HTTP) typically required between OTel components.
 
 Architectural Comparison
 
-Dimension	Traditional Multi-Component OTel Stacks	KestrelScope Monolith (Option 1)
+Dimension	Traditional Multi-Component OTel Stacks	KestrelScope Platform (Option 1)
 Deployment Complexity	High (Requires Collector, DB, UI, and Sidecars)	Low (Single binary or container)
 Communication	Network (Heavy serialization overhead)	In-Process (Direct memory/method calls)
 Resource Footprint	Significant (Multiple runtimes and buffers)	Minimal (Shared runtime, no network IO)
@@ -54,7 +54,7 @@ app.MapPost("/v1/metrics", async (HttpContext context, Channel<MetricPayload> me
 
 3. Storage Layer: Embedded SQLite in WAL Mode
 
-For monolithic deployment, KestrelScope utilizes an embedded SQLite engine. While the platform is designed for ClickHouse in clustered environments, the monolith uses SQLite with specific optimizations to emulate columnar efficiency.
+For standalone deployment, KestrelScope utilizes an embedded SQLite engine. While the platform is designed for ClickHouse in clustered environments, the single-binary deployment uses SQLite with specific optimizations to emulate columnar efficiency.
 
 Write-Ahead Logging (WAL) and Concurrency
 
@@ -179,14 +179,14 @@ Windows Service / IIS Configuration: For Windows Services, variables must be def
 
 7. Deployment and Operational Steps
 
-KestrelScope is deployed as a standalone binary. External coordination tools like ZooKeeper are strictly forbidden in this monolithic configuration.
+KestrelScope is deployed as a standalone binary. External coordination tools like ZooKeeper are strictly forbidden in this standalone configuration.
 
 Docker Compose Configuration
 
 version: '3.8'
 services:
   kestrelscope:
-    image: kestrelscope-monolith:latest
+    image: mindslost/kestrelscope:latest
     container_name: kestrelscope
     ports:
       - "4317:4317" # OTLP gRPC
@@ -206,9 +206,9 @@ volumes:
 
 Before scaling, perform these health checks to ensure the pipeline is operational:
 
-* [ ] OTLP Connectivity: Verify the monolith is listening on port 4318. Use curl -I http://localhost:4318/v1/traces to check for endpoint availability.
+* [ ] OTLP Connectivity: Verify the service is listening on port 4318. Use curl -I http://localhost:4318/v1/traces to check for endpoint availability.
 * [ ] SQLite Permissions: Ensure the process has write access to the database directory. SQLite requires directory-level write permissions to create -wal and -shm files.
 * [ ] Startup Hook Loading: Check the target application logs. If the agent fails to load, verify the DOTNET_STARTUP_HOOKS path is absolute and reachable.
-* [ ] Protobuf Validation: Monitor KestrelScope console output for deserialization errors. Ensure the agent and monolith are using compatible OTLP Protobuf versions.
+* [ ] Protobuf Validation: Monitor KestrelScope console output for deserialization errors. Ensure the agent and server are using compatible OTLP Protobuf versions.
 * [ ] Dashboard Assets: Confirm the wwwroot directory is located in the binary's execution path to avoid 404 errors on the UI.
 

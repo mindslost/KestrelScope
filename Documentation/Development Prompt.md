@@ -6,13 +6,13 @@ Below are the complete design specifications, database schemas, API contracts, m
 ================================================================================
 FILE 1: README.md
 ================================================================================
-# KestrelScope — Self-Hosted .NET Observability Monolith
+# KestrelScope — Self-Hosted .NET Observability Platform
 
 ## Project Overview
 KestrelScope is a 100% sovereign, self-hosted, single-binary observability service built with .NET 8/9 and SQLite. It provides native OpenTelemetry (OTLP) metrics and trace ingestion, an embedded relational metastore, a background alert evaluation engine, and a web dashboard for monitoring microservice health.
 
 ## Architectural Mandates
-1. Single-Binary Monolith: Runs as a single process containing web API endpoints, static UI assets (wwwroot), database engine, and background workers. No external container dependencies (no ClickHouse, PostgreSQL, or Redis) and no SaaS vendors.
+1. Single-Binary Architecture: Runs as a single process containing web API endpoints, static UI assets (wwwroot), database engine, and background workers. No external container dependencies (no ClickHouse, PostgreSQL, or Redis) and no SaaS vendors.
 2. Air-Gapped Operation: All static frontend assets (HTML, CSS, JS, Chart.js) are hosted locally within wwwroot/. No external CDN calls or internet access required.
 3. High-Concurrency Persistence: Uses SQLite in Write-Ahead Logging (WAL) mode (`PRAGMA journal_mode=WAL;`) for concurrent read/write throughput without database lock contention.
 4. Standard OTLP Receivers: Exposes standard OpenTelemetry ingestion endpoints at /v1/metrics and /v1/traces.
