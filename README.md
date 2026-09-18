@@ -89,13 +89,16 @@ curl -X POST http://localhost:5000/v1/logs \
 
 ## Web Console Features
 
-| View | Path | Description |
-| :--- | :--- | :--- |
-| **Landing Portal** | `/` | Fluent 2 Acrylic launcher with live operational health badge |
-| **Metrics Explorer** | `/dashboard.html` | Live KPI cards, service & metric filters, segmented time windows, and Chart.js telemetry graphs |
-| **Traces Explorer** | `/traces.html` | Master-detail split view with compact DataGrid, execution waterfalls, and correlated log links |
-| **Logs Explorer** | `/logs.html` | Structured log feed, severity filters, live text search, and clickable trace correlation pills |
-| **Alert Rules** | `/alerts.html` | Threshold alert rule manager with automated background worker evaluation and webhook dispatchers |
+| View | Path | Description | Access |
+| :--- | :--- | :--- | :--- |
+| **Landing Portal** | `/` | Fluent 2 Acrylic launcher with live operational health badge | All Users |
+| **Metrics Explorer** | `/dashboard.html` | Live KPI cards, service & metric filters, segmented time windows, and Chart.js telemetry graphs | Standard / Admin |
+| **Application Flow Map** | `/flowmap.html` | Multi-service topology graph with live inter-service RPS, error rates, latencies, draggable node caching, and inspector drawer | Standard / Admin |
+| **Traces Explorer** | `/traces.html` | Master-detail split view with compact DataGrid, execution waterfalls, and correlated log links | Standard / Admin |
+| **Logs Explorer** | `/logs.html` | Structured log feed, severity filters, live text search, and clickable trace correlation pills | Standard / Admin |
+| **Alert Rules** | `/alerts.html` | Threshold alert rule manager with automated background worker evaluation and webhook dispatchers | Standard (Read) / Admin (Edit) |
+| **Users Management** | `/users.html` | User accounts, credentials, and Role-Based Access Control (Admin vs Standard) | Admin Only |
+| **Database Management** | `/database.html` | Storage diagnostics, retention policies, chunked pruning, online hot backups (.db.gz), disaster recovery restore, and SOC2 audit trail | Admin Only |
 
 ---
 
@@ -116,27 +119,37 @@ dotnet test tests/KestrelScope.EndToEndTests
 ## Repository Directory Structure
 ```
 ├── Controllers/
-│   ├── OtlpIngestionController.cs  # Ingests standard OTLP metrics, traces, and logs
-│   └── ApiControllers.cs           # Web UI REST APIs (/api/auth, /api/metrics, /api/logs, /api/alerts)
+│   ├── OtlpIngestionController.cs      # Ingests standard OTLP metrics, traces, and logs
+│   ├── ApiControllers.cs               # Core REST APIs (/api/auth, /api/metrics, /api/logs, /api/alerts, /api/topology)
+│   └── DatabaseAdminController.cs      # Admin database management endpoints (/api/admin/database/*)
+├── Models/
+│   ├── TelemetryModels.cs              # Core telemetry and alert DTOs
+│   └── DatabaseManagementModels.cs     # Storage stats, backup items, prune/restore requests
 ├── Services/
-│   └── AlertRulerWorker.cs         # Background evaluation worker dispatching webhooks
+│   ├── AlertRulerWorker.cs             # Background worker evaluating metric thresholds & dispatching webhooks
+│   ├── DatabaseMaintenanceWorker.cs    # Background worker running scheduled pruning & automated backups
+│   ├── IDatabaseManagementService.cs   # Database engine & lifecycle service contract
+│   └── DatabaseManagementService.cs    # SQLite online hot backup, gzip compression, restore & pruning engine
 ├── Documentation/
 │   ├── User_Guide_Setup_and_Integration.md # Complete user setup and integration guide
 │   └── Observability_Roadmap_and_Architecture_Plan.md # Architecture roadmap
 ├── tests/
-│   ├── SampleOrderService/         # Reference microservice emitting OTel telemetry
-│   └── KestrelScope.EndToEndTests/ # xUnit automated end-to-end test suite
-├── wwwroot/                        # Sovereign, air-gapped Fluent 2 web UI assets
-│   ├── index.html                  # Landing page
-│   ├── login.html                  # Auth page
-│   ├── dashboard.html              # Metrics explorer
-│   ├── traces.html                 # Traces explorer
-│   ├── logs.html                   # Logs explorer
-│   ├── alerts.html                 # Alert rules manager
-│   ├── css/main.css                # Microsoft Fluent 2 Dark Theme stylesheet
-│   └── js/app.js                   # Client application controller
-├── DbInitializer.cs                # SQLite schema initializer & WAL configuration
+│   ├── SampleOrderService/             # Reference microservice emitting OTel telemetry
+│   └── KestrelScope.EndToEndTests/     # xUnit automated end-to-end test suite
+├── wwwroot/                            # Sovereign, air-gapped Fluent 2 web UI assets
+│   ├── index.html                      # Landing portal
+│   ├── login.html                      # Session authentication
+│   ├── dashboard.html                  # Metrics explorer
+│   ├── flowmap.html                    # Application flow map & topology graph
+│   ├── traces.html                     # Traces explorer & execution waterfall
+│   ├── logs.html                       # Structured logs explorer
+│   ├── alerts.html                     # Alert rules manager
+│   ├── users.html                      # User management & RBAC console
+│   ├── database.html                   # Database management & disaster recovery console
+│   ├── css/main.css                    # Microsoft Fluent 2 Dark Theme stylesheet
+│   └── js/app.js                       # Client application controller & UI modules
+├── DbInitializer.cs                    # SQLite schema initializer, WAL configuration & settings seed
 ├── Dockerfile                      # Production container definition
 ├── docker-compose.yml              # Local container orchestration
-└── Program.cs                      # Application entry point
+└── Program.cs                          # Application entry point & service dependency injection
 ```

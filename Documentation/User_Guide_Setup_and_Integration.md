@@ -20,10 +20,21 @@ A complete operational guide for deploying **KestrelScope** and integrating it w
    - [Raw HTTP / cURL Ingestion](#5-raw-http--curl-ingestion)
 5. [Using the Web Console](#5-using-the-web-console)
    - [Metrics Explorer](#metrics-explorer)
+   - [Application Flow Map & Service Topology](#application-flow-map--service-topology)
    - [Traces Explorer & Waterfall View](#traces-explorer--waterfall-view)
    - [Logs Explorer & Trace Correlation](#logs-explorer--trace-correlation)
    - [Alert Rules & Webhooks](#alert-rules--webhooks)
-6. [Database Management & Maintenance](#6-database-management--maintenance)
+   - [Users Management & Role-Based Access Control](#users-management--role-based-access-control)
+   - [Database Management Console](#database-management-console)
+6. [Database Management & Admin REST API](#6-database-management--admin-rest-api)
+   - [Core Architecture & Lifecycle Worker](#core-architecture--lifecycle-worker)
+   - [Online Hot Backups & Gzip Compression](#online-hot-backups--gzip-compression)
+   - [Disaster Recovery & Fail-Safe Restore Protocol](#disaster-recovery--fail-safe-restore-protocol)
+   - [Chunked Telemetry Pruning & Dry-Run Simulation](#chunked-telemetry-pruning--dry-run-simulation)
+   - [Engine Operations (Vacuum, Checkpoint, Integrity)](#engine-operations-vacuum-checkpoint-integrity)
+   - [Administrative Compliance Audit Logging](#administrative-compliance-audit-logging)
+   - [Admin REST API Reference](#admin-rest-api-reference)
+   - [Programmatic cURL Administration Examples](#programmatic-curl-administration-examples)
 7. [Troubleshooting & Verification](#7-troubleshooting--verification)
 
 ---
@@ -52,26 +63,33 @@ KestrelScope is an **air-gapped, sovereign, single-binary observability platform
 │  ┌────────────────── Embedded SQLite Database (WAL Mode) ──────────────┐  │
 │  │   MetricSamples           Spans & Events          Structured Logs   │  │
 │  │   AlertRules              AlertIncidents          Users & Sessions  │  │
+│  │   DatabaseSettings        AdminAuditLogs          Backups Metastore │  │
 │  └─────────────────────────────────┬───────────────────────────────────┘  │
 │                                    │                                      │
 │  ┌─────────────────────── Background Services ─────────────────────────┐  │
 │  │   • AlertRuleWorker (Automated metric evaluation & webhook dispatch)│  │
+│  │   • DatabaseMaintenanceWorker (Nightly pruning & automated backups) │  │
 │  └─────────────────────────────────┬───────────────────────────────────┘  │
 │                                    │                                      │
 │  ┌────────────────────── Fluent 2 Web Console ─────────────────────────┐  │
-│  │   • Metrics Explorer (Chart.js)    • Distributed Traces Waterfall   │  │
-│  │   • Structured Logs Explorer       • Alert Rules Management         │  │
+│  │   • Metrics Explorer               • Application Flow Map (Topology)│  │
+│  │   • Traces Waterfall               • Structured Logs Explorer       │  │
+│  │   • Alert Rules Manager            • User Management (Admin RBAC)   │  │
+│  │   • Database Management Console (Storage, Backups, Restore, Audit)  │  │
 │  └─────────────────────────────────────────────────────────────────────┘  │
 └───────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Key Ingestion Endpoints (Standard OTLP/HTTP)
-| Endpoint | Method | Format | Description |
+### Key Ingestion & Admin Endpoints
+| Endpoint | Method | Role | Description |
 | :--- | :--- | :--- | :--- |
-| `/v1/metrics` | `POST` | JSON / OTLP | Ingests metric data points, gauges, and counters |
-| `/v1/traces` | `POST` | JSON / OTLP | Ingests distributed trace spans and parent-child hierarchies |
-| `/v1/logs` | `POST` | JSON / OTLP | Ingests structured log events with correlated Trace/Span IDs |
-| `/health` | `GET` | JSON | Service health status check |
+| `/v1/metrics` | `POST` | Public | Ingests metric data points, gauges, and counters (OTLP/HTTP) |
+| `/v1/traces` | `POST` | Public | Ingests distributed trace spans and parent-child hierarchies (OTLP/HTTP) |
+| `/v1/logs` | `POST` | Public | Ingests structured log events with correlated Trace/Span IDs (OTLP/HTTP) |
+| `/health` | `GET` | Public | Service liveness health check |
+| `/api/topology` | `GET` | Standard | Inferred service dependency graph and inter-service telemetry |
+| `/api/users` | `*` | Admin | Manage user accounts, credentials, and role permissions |
+| `/api/admin/database/*` | `*` | Admin | Complete database lifecycle: retention, pruning, backup, restore, audit |
 
 ---
 
@@ -517,14 +535,25 @@ Open your browser to `http://localhost:5000/` to explore your service telemetry 
 
 ### Metrics Explorer
 - **URL**: `http://localhost:5000/dashboard.html`
+- **Access**: Standard & Administrator
 - **Features**:
   - **KPI Cards**: Active monitored service count, sample ingest rates, and triggered alerts.
   - **Filters**: Select any detected service and metric series from dropdown menus.
   - **Time Range**: Toggle between `15m`, `1h`, `6h`, and `24h` windows.
   - **Performance Graph**: Real-time line graph rendered via Chart.js with hover tooltips and sample point counts.
 
+### Application Flow Map & Service Topology
+- **URL**: `http://localhost:5000/flowmap.html`
+- **Access**: Standard & Administrator
+- **Features**:
+  - **Inferred Service Dependency Graph**: Automatically detects service-to-service communication paths from distributed trace parent-child span boundaries.
+  - **Live Inter-Service Telemetry**: Directed connector edges display real-time call volume (RPS), error rates (%), and average roundtrip latency (ms).
+  - **Interactive Draggable Nodes**: Arrange service topology nodes on an infinite canvas with positions automatically cached in session storage.
+  - **Service Inspector Drawer**: Click any node to slide open a dedicated telemetry panel showing inbound/outbound dependencies, active throughput, and health status badges.
+
 ### Traces Explorer & Waterfall View
 - **URL**: `http://localhost:5000/traces.html`
+- **Access**: Standard & Administrator
 - **Features**:
   - **Left Panel (Trace DataGrid)**: Clean table displaying Trace ID, HTTP Method, Endpoint, Status (`200 OK`, `500 Error`), and Latency Duration.
   - **Right Panel (Waterfall Hierarchy)**: Click any trace in the list to reveal the nested execution tree of child spans. Microsecond execution bars indicate exact call durations, component boundaries, and failure points.
@@ -532,6 +561,7 @@ Open your browser to `http://localhost:5000/` to explore your service telemetry 
 
 ### Logs Explorer & Trace Correlation
 - **URL**: `http://localhost:5000/logs.html`
+- **Access**: Standard & Administrator
 - **Features**:
   - **Real-Time Stream**: Live view of structured application logs with severity badges (`ERROR`, `WARN`, `INFO`, `DEBUG`).
   - **Search & Filters**: Search message text, filter by service name, filter by severity, or isolate a specific `TraceId`.
@@ -540,37 +570,149 @@ Open your browser to `http://localhost:5000/` to explore your service telemetry 
 
 ### Alert Rules & Webhooks
 - **URL**: `http://localhost:5000/alerts.html`
+- **Access**: Standard (Read-Only) / Administrator (Create, Edit, Delete)
 - **Features**:
   - **Rule Definition**: Click `+ New Alert Rule` to configure automatic threshold evaluations.
   - **Parameters**: Specify Metric Name (e.g., `http.server.request.duration`), Threshold Value (e.g., `500`), Evaluation Window (1m to 60m), and target Webhook URL.
   - **Evaluation Engine**: The background `AlertRuleWorker` evaluates average values across the specified window every 60 seconds.
   - **Webhook Payload**: When an alert breaches, KestrelScope dispatches a POST request to your webhook URL with incident details, and dispatches a resolution event when metrics normalize.
 
+### Users Management & Role-Based Access Control
+- **URL**: `http://localhost:5000/users.html`
+- **Access**: Administrator Only (Enforced via RBAC)
+- **Features**:
+  - **Role Separation**:
+    - **Administrator (`admin`)**: Full platform control, including database operations, user management, and alert rule modifications.
+    - **Standard (`standard`)**: Telemetry exploration, flow map monitoring, and read-only alert visibility.
+  - **User Lifecycle**: Create accounts, assign roles, and update user credentials.
+  - **Security Safeguards**: The active logged-in administrator is prevented from deleting their own account to prevent accidental lockout.
+
+### Database Management Console
+- **URL**: `http://localhost:5000/database.html`
+- **Access**: Administrator Only (Guarded via route and API RBAC)
+- **Features (5 Dedicated Management Panes)**:
+  1. **Overview & Storage**:
+     - Real-time disk utilization: Active SQLite DB size, WAL journal size, SHM index size, and reclaimable freelist pages.
+     - Live SQLite schema table breakdown showing row counts, byte sizes, and telemetry timestamp spans (`oldest -> newest`).
+     - Engine operations: One-click buttons to execute `PRAGMA integrity_check`, sync and truncate the WAL journal (`PRAGMA wal_checkpoint(TRUNCATE)`), or run a full database `VACUUM`.
+     - Interactive storage warning banner when active database size exceeds the configured warning threshold.
+  2. **Retention & Pruning**:
+     - Global retention policy settings: Set expiration timeframes (days) for MetricSamples, Spans, Logs, and Alerts.
+     - Automated background pruning scheduler: Configure daily execution hour (UTC).
+     - On-demand chunked pruner: Target specific telemetry tables or purge all expired records with dry-run estimation simulation before permanent execution.
+  3. **Backups Catalog**:
+     - Online hot backup creation with custom labels and optional Gzip compression (`.db.gz`).
+     - Interactive snapshot catalog displaying filename, backup type (`Manual`, `Scheduled`, `Safety Rollback`), formatted size, creation timestamp, and SHA256 integrity checksum.
+     - Direct browser downloads, one-click restore triggers, and snapshot deletion.
+  4. **Disaster Recovery**:
+     - High-safeguard restoration engine requiring strict confirmation typing (`CONFIRM_RESTORE`).
+     - **Automated Safety Rollback Snapshot**: KestrelScope automatically captures an emergency snapshot of the current active database before overwriting data, allowing restorations to be undone at any time.
+  5. **Audit Trail**:
+     - Compliance activity stream logging administrative actions (`PRUNE`, `BACKUP_CREATE`, `BACKUP_DELETE`, `RESTORE`, `RETENTION_UPDATE`, `VACUUM`, `CHECKPOINT`).
+     - Records admin username, timestamp (UTC), client IP address, target tables/snapshots, and execution details for SOC2 / audit compliance.
+
 ---
 
-## 6. Database Management & Maintenance
+## 6. Database Management & Admin REST API
 
-KestrelScope stores all telemetry in an embedded SQLite database (`observability.db`) using **Write-Ahead Logging (WAL)** mode.
+KestrelScope features an enterprise-grade database lifecycle engine engineered for 100% sovereign operation without external database administrators.
 
-### Database File Structure
-- `observability.db`: Main SQLite relational database.
-- `observability.db-wal`: Write-Ahead Log storing concurrent writes before checkpointing.
-- `observability.db-shm`: Shared-memory index used for lock-free reads.
+### Core Architecture & Lifecycle Worker
+- **Dual-Worker Concurrency**: In addition to `AlertRuleWorker`, KestrelScope runs `DatabaseMaintenanceWorker` as an ASP.NET Core `BackgroundService`.
+- **Automated Nightly Maintenance**: Evaluates active retention policies once per hour. When the configured UTC hour matches, it automatically executes chunked retention pruning, triggers a daily hot backup, and rotates historical backups according to `BackupRetentionCount`.
+- **Lock-Free Ingestion**: Telemetry ingestion continues uninhibited during maintenance operations thanks to SQLite Write-Ahead Logging (WAL) mode and chunked transaction isolation.
 
-### Backup Strategy
-Because WAL mode allows lock-free concurrent reads while writes are active, you can back up the live database safely without stopping KestrelScope:
+### Online Hot Backups & Gzip Compression
+Rather than relying on risky file-copy operations while SQLite is writing, KestrelScope invokes the native **SQLite Online Backup API** (`SqliteConnection.BackupDatabase()`):
+- Creates crash-consistent, byte-exact snapshots while writes are active in the WAL journal.
+- **Gzip Streaming Compression**: Automatically streams backup bytes through `GZipStream`, generating `.db.gz` archives that reduce disk footprints by 70–85%.
+- **SHA256 Checksums**: Every snapshot calculates a SHA256 checksum during generation, displayed in the catalog and stored in the metadata.
+
+### Disaster Recovery & Fail-Safe Restore Protocol
+To prevent catastrophic accidental data loss during restorations:
+1. The operator selects a snapshot and must provide the verification token `CONFIRM_RESTORE`.
+2. KestrelScope immediately runs an online hot backup of the *current* active database, creating a rollback snapshot named `pre-restore-safety-<timestamp>.db`.
+3. If the selected snapshot is compressed (`.db.gz`), it is uncompressed into a temporary database file.
+4. Structural integrity is validated on the target file via `PRAGMA quick_check;`.
+5. The live database connection is safely synchronized using SQLite page backup restoration.
+6. Schema initialization verifies table consistency and migrations.
+
+### Chunked Telemetry Pruning & Dry-Run Simulation
+To avoid holding long table locks on multi-gigabyte SQLite databases, deletions are partitioned into configurable batches (**5,000 rows per batch**):
+- Pruning runs in iterative loops: `DELETE FROM Table WHERE Id IN (SELECT Id FROM Table WHERE Timestamp < @Cutoff LIMIT 5000);`
+- **Dry-Run Mode**: Operators can run a simulation (`dryRun = true`) that queries candidate counts without deleting data, reporting estimated reclaimable bytes and execution times.
+
+### Engine Operations (Vacuum, Checkpoint, Integrity)
+- **`VACUUM`**: Rebuilds the database file to reclaim unused space from deleted records and defragment data pages.
+- **`PRAGMA wal_checkpoint(TRUNCATE)`**: Flushes uncommitted pages from the `.db-wal` file back into the primary `.db` file and truncates the WAL file to zero bytes.
+- **`PRAGMA integrity_check` & `foreign_key_check`**: Scans the database B-tree structure and relational foreign keys for physical corruption or inconsistency.
+
+### Administrative Compliance Audit Logging
+Every administrative database mutation is captured in the relational `AdminAuditLogs` table:
+- **Recorded Fields**: `Id`, `Timestamp`, `Username`, `Action`, `Target`, `DetailsJson`, `IpAddress`.
+- Provides an immutable compliance trail for SOC2, HIPAA, and ISO27001 audit standards.
+
+### Admin REST API Reference
+
+All database administration endpoints are rooted at `/api/admin/database` and strictly require authentication with `Role == 'Admin'`. Unauthorized or standard user requests are rejected with `401 Unauthorized` or `403 Forbidden`.
+
+| Method | Endpoint | Description | Request Body | Response Model |
+| :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/api/admin/database/storage` | Get database disk usage, WAL, freelist, and table breakdown | None | `DatabaseStorageStatsDto` |
+| `GET` | `/api/admin/database/health` | Run integrity check and foreign key check | None | `DatabaseHealthDto` |
+| `GET` | `/api/admin/database/retention` | Get active retention policies and schedules | None | `RetentionPolicyDto` |
+| `PUT` | `/api/admin/database/retention` | Update retention policies, scheduler hours, warning threshold | `UpdateRetentionPolicyRequest` | `RetentionPolicyDto` |
+| `POST` | `/api/admin/database/prune` | Execute on-demand or dry-run chunked pruning | `PruneRequest` | `PruneResultDto` |
+| `POST` | `/api/admin/database/vacuum` | Execute full VACUUM compaction | None | `{ message: string }` |
+| `POST` | `/api/admin/database/checkpoint` | Flush and truncate WAL journal | None | `{ message: string }` |
+| `GET` | `/api/admin/database/backups` | List all available backup snapshots in catalog | None | `IEnumerable<BackupItemDto>` |
+| `POST` | `/api/admin/database/backups` | Create a live online hot backup snapshot | `CreateBackupRequest` | `BackupItemDto` |
+| `GET` | `/api/admin/database/backups/{fileName}/download` | Stream download of backup snapshot file | None | Binary (`application/octet-stream`) |
+| `DELETE` | `/api/admin/database/backups/{fileName}` | Permanently delete a backup snapshot | None | `{ message: string }` |
+| `POST` | `/api/admin/database/restore` | Restore database snapshot with automated safety rollback | `RestoreRequest` | `RestoreResultDto` |
+| `GET` | `/api/admin/database/audit` | Query administrative compliance audit trail | Query `limit=100` | `IEnumerable<AdminAuditLogDto>` |
+
+### Programmatic cURL Administration Examples
+
+Ensure you authenticate first via `POST /api/auth/login` to obtain an authenticated session cookie:
 
 ```bash
-# Perform an online SQLite backup using the sqlite3 CLI
-sqlite3 observability.db ".backup 'observability-backup-$(date +%Y%m%d).db'"
-```
+# 1. Log in as an Administrator
+curl -c cookies.txt -X POST http://localhost:5000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}'
 
-### Relational Schema Reference
-- `MetricSamples`: `(Id, Timestamp, ServiceName, MetricName, Value)`
-- `Spans`: `(Id, TraceId, SpanId, ParentSpanId, ServiceName, SpanName, StartNano, EndNano, DurationMs, StatusCode)`
-- `Logs`: `(Id, Timestamp, TraceId, SpanId, ServiceName, SeverityText, SeverityNumber, Body, AttributesJson)`
-- `AlertRules`: `(Id, Name, MetricName, Threshold, WindowMinutes, WebhookUrl, IsEnabled)`
-- `AlertIncidents`: `(Id, RuleId, TriggeredAt, ResolvedAt, MetricValue, Status)`
+# 2. Inspect Live Database Storage Breakdown
+curl -b cookies.txt http://localhost:5000/api/admin/database/storage
+
+# 3. Trigger a Dry-Run Pruning Simulation (Override to 7 days retention)
+curl -b cookies.txt -X POST http://localhost:5000/api/admin/database/prune \
+  -H "Content-Type: application/json" \
+  -d '{
+    "target": "all",
+    "customRetentionDays": 7,
+    "dryRun": true
+  }'
+
+# 4. Create an On-Demand Compressed Backup Snapshot
+curl -b cookies.txt -X POST http://localhost:5000/api/admin/database/backups \
+  -H "Content-Type: application/json" \
+  -d '{"label":"pre-upgrade-milestone","compress":true}'
+
+# 5. Download a Backup Snapshot Archive
+curl -b cookies.txt -OJ http://localhost:5000/api/admin/database/backups/kestrelscope-backup-20260918-171915.db.gz
+
+# 6. Flush and Truncate WAL Journal
+curl -b cookies.txt -X POST http://localhost:5000/api/admin/database/checkpoint
+
+# 7. Execute Disaster Recovery Restore (Requires confirmation token)
+curl -b cookies.txt -X POST http://localhost:5000/api/admin/database/restore \
+  -H "Content-Type: application/json" \
+  -d '{
+    "backupFileName": "kestrelscope-backup-20260918-171915.db.gz",
+    "confirmationToken": "CONFIRM_RESTORE"
+  }'
+```
 
 ---
 
@@ -597,8 +739,24 @@ Remember to update your service's `OTEL_EXPORTER_OTLP_ENDPOINT` to match:
 export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:5050"
 ```
 
+### Issue: Storage Warning Threshold Exceeded Banner
+If the Web Console displays a high-water mark storage warning banner:
+1. Navigate to **Database Management** (`/database.html`).
+2. Run **Integrity Check** to confirm database health.
+3. In **Retention & Pruning**, execute an **On-Demand Telemetry Pruning** (or perform a Dry Run first to preview reclaimable space).
+4. Run **Flush WAL Checkpoint** and **Vacuum Database** to reclaim deleted space back to the operating system.
+5. If necessary, increase the `Storage Warning Threshold (MB)` in the Retention tab.
+
+### Issue: Restoring After Accidental Data Loss
+If bad telemetry was ingested or data corruption occurred:
+1. Navigate to **Disaster Recovery** in the Database Management console.
+2. Select a verified historical snapshot from the dropdown.
+3. Type `CONFIRM_RESTORE` and click **Authorize & Restore Database Snapshot**.
+4. KestrelScope will automatically capture a `pre-restore-safety-*.db` snapshot of the current state before applying the restored snapshot.
+5. If the restore needs to be reverted, select the `Safety Rollback` snapshot from the Backups Catalog.
+
 ### Running the End-to-End Automated Test Suite
-KestrelScope includes a complete integration test suite exercising ingestion, tracing, log correlation, and alerting against a sample microservice:
+KestrelScope includes a complete integration test suite exercising ingestion, tracing, log correlation, alerting, RBAC enforcement, pruning, online hot backups, and disaster recovery restore:
 
 ```bash
 # Run automated tests on host
