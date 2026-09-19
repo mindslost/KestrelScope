@@ -36,6 +36,7 @@ A complete operational guide for deploying **KestrelScope** and integrating it w
    - [Admin REST API Reference](#admin-rest-api-reference)
    - [Programmatic cURL Administration Examples](#programmatic-curl-administration-examples)
 7. [Troubleshooting & Verification](#7-troubleshooting--verification)
+8. [License & Source-Available Usage](#8-license--source-available-usage)
 
 ---
 
@@ -765,4 +766,17 @@ dotnet test tests/KestrelScope.EndToEndTests
 # Or run tests fully isolated in Docker CE
 ./scripts/run-e2e.sh
 ```
+
+---
+
+## 8. License & Source-Available Usage
+
+KestrelScope is distributed under a source-available license: the **Apache License, Version 2.0** with the **"Commons Clause" License Condition v1.0**.
+
+### Permitted & Restricted Scope:
+- **Free for Individuals & Companies**: Free to inspect, adapt, deploy, and execute for personal, academic, and internal organizational infrastructure monitoring.
+- **Contributions**: Welcomed and encouraged. In accordance with Apache License 2.0 Section 5, all contributions are bound to the root Apache 2.0 + Commons Clause terms (see [CONTRIBUTING.md](../CONTRIBUTING.md)).
+- **Commercial Protection**: The Commons Clause strictly prohibits selling the software, bundling it into paid distributions, or offering it as a commercial hosted service (SaaS) where the value derives entirely or substantially from KestrelScope without prior written agreement from the Licensor (Jason Lysinger).
+- **Full Legal Terms**: See [LICENSE.md](../LICENSE.md).
+
 

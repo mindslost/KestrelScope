@@ -4,7 +4,7 @@
 [![.NET 9](https://img.shields.io/badge/.NET-9.0-512bd4.svg)](https://dotnet.microsoft.com/download/dotnet/9.0)
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-OTLP%201.0-4a154b.svg)](https://opentelemetry.io/)
 [![Design System](https://img.shields.io/badge/Design%20System-Microsoft%20Fluent%202-0f6cbd.svg)](https://fluent2.microsoft.design/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License: Apache 2.0 w/ Commons Clause](https://img.shields.io/badge/License-Apache_2.0_w%2F_Commons_Clause-blue.svg)](LICENSE.md)
 
 KestrelScope is a **100% sovereign, self-hosted, single-binary observability platform** engineered in .NET 9 and SQLite. It provides native OpenTelemetry (OTLP) ingestion for **Metrics**, **Distributed Traces**, and **Structured Logs** with bidirectional trace correlation, an embedded relational metastore, a background alert evaluation engine, and a modern web dashboard built on the **Microsoft Fluent 2 Design System**.
 
@@ -131,11 +131,11 @@ dotnet test tests/KestrelScope.EndToEndTests
 │   ├── IDatabaseManagementService.cs   # Database engine & lifecycle service contract
 │   └── DatabaseManagementService.cs    # SQLite online hot backup, gzip compression, restore & pruning engine
 ├── Documentation/
-│   ├── User_Guide_Setup_and_Integration.md # Complete user setup and integration guide
-│   └── Observability_Roadmap_and_Architecture_Plan.md # Architecture roadmap
+│   └── User_Guide_Setup_and_Integration.md # Complete user setup and integration guide
 ├── tests/
 │   ├── SampleOrderService/             # Reference microservice emitting OTel telemetry
 │   └── KestrelScope.EndToEndTests/     # xUnit automated end-to-end test suite
+├── website/                            # Static product & documentation website (GitHub Pages)
 ├── wwwroot/                            # Sovereign, air-gapped Fluent 2 web UI assets
 │   ├── index.html                      # Landing portal
 │   ├── login.html                      # Session authentication
@@ -148,8 +148,22 @@ dotnet test tests/KestrelScope.EndToEndTests
 │   ├── database.html                   # Database management & disaster recovery console
 │   ├── css/main.css                    # Microsoft Fluent 2 Dark Theme stylesheet
 │   └── js/app.js                       # Client application controller & UI modules
+├── CONTRIBUTING.md                     # Community contribution guidelines & license binding
+├── LICENSE.md                          # Apache 2.0 with Commons Clause Condition v1.0
 ├── DbInitializer.cs                    # SQLite schema initializer, WAL configuration & settings seed
-├── Dockerfile                      # Production container definition
-├── docker-compose.yml              # Local container orchestration
+├── Dockerfile                          # Production container definition
+├── docker-compose.yml                  # Local container orchestration
 └── Program.cs                          # Application entry point & service dependency injection
 ```
+
+## Contributing
+
+Contributions, bug reports, and enhancements are welcome! All submissions are bound to the project's Apache 2.0 with Commons Clause license terms. Please see [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
+
+## License
+
+This project is licensed under the **Apache License, Version 2.0 with the "Commons Clause" License Condition v1.0** — see [LICENSE.md](LICENSE.md) for full terms.
+
+- **Free for Individuals & Organizations**: You may freely use, inspect, adapt, run, and modify KestrelScope for personal, educational, and internal business operations.
+- **Commercial Restrictions**: Under the Commons Clause Condition v1.0, selling, sublicensing, or offering KestrelScope as a managed commercial service (SaaS) where the value derives substantially from the software's functionality is strictly prohibited without prior written authorization from the Licensor.
+
