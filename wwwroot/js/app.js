@@ -18,13 +18,11 @@ async function checkAuth(isLoginPage = false) {
       if (data.isAuthenticated) {
         window.location.href = '/dashboard.html';
       }
-      return;
       return data;
     }
 
     if (!data.isAuthenticated) {
       window.location.href = '/login.html';
-      return;
       return null;
     }
 
@@ -46,8 +44,7 @@ async function checkAuth(isLoginPage = false) {
       landingDatabaseBtn.style.display = isAdmin ? 'inline-flex' : 'none';
     }
 
-    if (window.location.pathname.endsWith('/users.html') || window.location.pathname.endsWith('users.html') ||
-        window.location.pathname.endsWith('/database.html') || window.location.pathname.endsWith('database.html')) {
+    if (window.location.pathname.endsWith('users.html') || window.location.pathname.endsWith('database.html')) {
       if (!isAdmin) {
         window.location.href = '/dashboard.html';
         return null;
@@ -57,7 +54,6 @@ async function checkAuth(isLoginPage = false) {
     const avatarEl = document.getElementById('userAvatar');
     if (avatarEl && data.username) {
       avatarEl.textContent = data.username.substring(0, 2).toUpperCase();
-      avatarEl.title = `Logged in as ${data.username}`;
       avatarEl.title = `Logged in as ${data.username} (${data.role || 'Standard'})`;
     }
 
@@ -112,7 +108,6 @@ async function handleLogin(username, password) {
 let metricsChart = null;
 
 async function initDashboard() {
-  await checkAuth();
   const user = await checkAuth();
   if (!user || !user.isAuthenticated) return;
 

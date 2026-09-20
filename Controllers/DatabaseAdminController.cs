@@ -3,6 +3,7 @@ using System.IO;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using KestrelScope.Constants;
 using KestrelScope.Models;
@@ -23,7 +24,7 @@ public class DatabaseAdminController : ControllerBase
     }
 
     private string CurrentUsername => User.Identity?.Name ?? AppConstants.UserRoles.AdminNormalized;
-    private string? ClientIp => HttpContext.Connection.RemoteIpAddress?.ToString();
+    private string ClientIp => HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
 
     #region Storage & Diagnostics
     [HttpGet("storage")]
@@ -43,14 +44,14 @@ public class DatabaseAdminController : ControllerBase
     [HttpPost("vacuum")]
     public async Task<IActionResult> RunVacuum()
     {
-        var msg = await _dbService.RunVacuumAsync(CurrentUsername, ClientIp ?? "127.0.0.1");
+        var msg = await _dbService.RunVacuumAsync(CurrentUsername, ClientIp);
         return Ok(new { status = "success", message = msg });
     }
 
     [HttpPost("checkpoint")]
     public async Task<IActionResult> RunCheckpoint()
     {
-        var msg = await _dbService.RunWalCheckpointAsync(CurrentUsername, ClientIp ?? "127.0.0.1");
+        var msg = await _dbService.RunWalCheckpointAsync(CurrentUsername, ClientIp);
         return Ok(new { status = "success", message = msg });
     }
     #endregion
@@ -66,7 +67,7 @@ public class DatabaseAdminController : ControllerBase
     [HttpPut("retention")]
     public async Task<IActionResult> UpdateRetentionPolicies([FromBody] UpdateRetentionPolicyRequest req)
     {
-        var updated = await _dbService.UpdateRetentionPoliciesAsync(req, CurrentUsername, ClientIp ?? "127.0.0.1");
+        var updated = await _dbService.UpdateRetentionPoliciesAsync(req, CurrentUsername, ClientIp);
         return Ok(updated);
     }
     #endregion
@@ -75,7 +76,7 @@ public class DatabaseAdminController : ControllerBase
     [HttpPost("prune")]
     public async Task<IActionResult> ExecutePrune([FromBody] PruneRequest req)
     {
-        var result = await _dbService.ExecutePruneAsync(req, CurrentUsername, ClientIp ?? "127.0.0.1");
+        var result = await _dbService.ExecutePruneAsync(req, CurrentUsername, ClientIp);
         return Ok(result);
     }
     #endregion
@@ -91,7 +92,7 @@ public class DatabaseAdminController : ControllerBase
     [HttpPost("backups")]
     public async Task<IActionResult> CreateBackup([FromBody] CreateBackupRequest req)
     {
-        var backup = await _dbService.CreateBackupAsync(req, CurrentUsername, ClientIp ?? "127.0.0.1", "Manual");
+        var backup = await _dbService.CreateBackupAsync(req, CurrentUsername, ClientIp, "Manual");
         return Ok(backup);
     }
 
@@ -101,7 +102,7 @@ public class DatabaseAdminController : ControllerBase
         try
         {
             var (stream, contentType, downloadName) = await _dbService.GetBackupDownloadStreamAsync(
-                filename, CurrentUsername, ClientIp ?? "127.0.0.1");
+                filename, CurrentUsername, ClientIp);
             return File(stream, contentType, downloadName);
         }
         catch (FileNotFoundException)
@@ -113,7 +114,7 @@ public class DatabaseAdminController : ControllerBase
     [HttpDelete("backups/{filename}")]
     public async Task<IActionResult> DeleteBackup(string filename)
     {
-        bool deleted = await _dbService.DeleteBackupAsync(filename, CurrentUsername, ClientIp ?? "127.0.0.1");
+        bool deleted = await _dbService.DeleteBackupAsync(filename, CurrentUsername, ClientIp);
         if (!deleted)
             return NotFound(new { error = $"Backup file '{filename}' was not found." });
 
@@ -135,7 +136,7 @@ public class DatabaseAdminController : ControllerBase
 
         try
         {
-            var result = await _dbService.RestoreBackupAsync(req, CurrentUsername, ClientIp ?? "127.0.0.1");
+            var result = await _dbService.RestoreBackupAsync(req, CurrentUsername, ClientIp);
             return Ok(result);
         }
         catch (FileNotFoundException ex)
@@ -144,7 +145,7 @@ public class DatabaseAdminController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { error = $"Restore operation failed: {ex.Message}" });
+            return StatusCode(StatusCodes.Status500InternalServerError, new { error = $"Restore operation failed: {ex.Message}" });
         }
     }
     #endregion
@@ -158,4 +159,3 @@ public class DatabaseAdminController : ControllerBase
     }
     #endregion
 }
-

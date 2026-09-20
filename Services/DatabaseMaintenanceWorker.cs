@@ -13,6 +13,9 @@ namespace KestrelScope.Services;
 
 public class DatabaseMaintenanceWorker : BackgroundService
 {
+    private const string SystemUser = "SystemScheduled";
+    private const string LocalIp = "127.0.0.1";
+
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<DatabaseMaintenanceWorker> _logger;
     private DateTime? _lastPruneDateUtc;
@@ -38,62 +41,10 @@ public class DatabaseMaintenanceWorker : BackgroundService
                 using var scope = _serviceProvider.CreateScope();
                 var dbService = scope.ServiceProvider.GetRequiredService<IDatabaseManagementService>();
                 var policies = await dbService.GetRetentionPoliciesAsync();
-
                 var nowUtc = DateTime.UtcNow;
 
-                // 1. Check Scheduled Auto-Prune
-                if (policies.AutoPruneEnabled && 
-                    nowUtc.Hour == policies.AutoPruneHourUtc && 
-                    _lastPruneDateUtc?.Date != nowUtc.Date)
-                {
-                    _logger.LogInformation("Triggering scheduled retention pruning cycle for {Date}", nowUtc.ToString("yyyy-MM-dd"));
-                    var pruneResult = await dbService.ExecutePruneAsync(new PruneRequest
-                    {
-                        Target = "all",
-                        DryRun = false,
-                        RunCheckpoint = true,
-                        RunVacuum = false
-                    }, "SystemScheduled", "127.0.0.1");
-
-                    _logger.LogInformation("Scheduled pruning complete: {TotalRows} rows purged in {Elapsed}ms. Freed est: {Freed}",
-                        pruneResult.TotalRowsDeleted, pruneResult.ElapsedMs, pruneResult.FreedSizeFormatted);
-
-                    _lastPruneDateUtc = nowUtc.Date;
-                }
-
-                // 2. Check Scheduled Auto-Backup
-                if (policies.AutoBackupEnabled && 
-                    nowUtc.Hour == policies.AutoBackupHourUtc && 
-                    _lastBackupDateUtc?.Date != nowUtc.Date)
-                {
-                    _logger.LogInformation("Triggering scheduled database backup for {Date}", nowUtc.ToString("yyyy-MM-dd"));
-                    var backupItem = await dbService.CreateBackupAsync(new CreateBackupRequest
-                    {
-                        Label = "scheduled",
-                        Compress = true
-                    }, "SystemScheduled", "127.0.0.1", "Scheduled");
-
-                    _logger.LogInformation("Scheduled backup created: {FileName} ({Size})", backupItem.FileName, backupItem.SizeFormatted);
-
-                    // Backup rotation: prune oldest scheduled backups if exceeding count
-                    var existingBackups = await dbService.GetBackupsAsync();
-                    var scheduledBackups = existingBackups
-                        .Where(b => b.Type == "Scheduled")
-                        .OrderByDescending(b => b.CreatedAt)
-                        .ToList();
-
-                    if (scheduledBackups.Count > policies.BackupRetentionCount)
-                    {
-                        var toDelete = scheduledBackups.Skip(policies.BackupRetentionCount).ToList();
-                        foreach (var oldBackup in toDelete)
-                        {
-                            _logger.LogInformation("Rotating old scheduled backup: {FileName}", oldBackup.FileName);
-                            await dbService.DeleteBackupAsync(oldBackup.FileName, "SystemScheduled", "127.0.0.1");
-                        }
-                    }
-
-                    _lastBackupDateUtc = nowUtc.Date;
-                }
+                await CheckAndExecutePruneAsync(dbService, policies, nowUtc);
+                await CheckAndExecuteBackupAsync(dbService, policies, nowUtc);
             }
             catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {
@@ -106,5 +57,68 @@ public class DatabaseMaintenanceWorker : BackgroundService
 
         _logger.LogInformation("Database Maintenance Worker stopping.");
     }
-}
 
+    private async Task CheckAndExecutePruneAsync(IDatabaseManagementService dbService, RetentionPolicyDto policies, DateTime nowUtc)
+    {
+        if (!policies.AutoPruneEnabled || nowUtc.Hour != policies.AutoPruneHourUtc || _lastPruneDateUtc?.Date == nowUtc.Date)
+        {
+            return;
+        }
+
+        _logger.LogInformation("Triggering scheduled retention pruning cycle for {Date}", nowUtc.ToString("yyyy-MM-dd"));
+        var pruneResult = await dbService.ExecutePruneAsync(new PruneRequest
+        {
+            Target = "all",
+            DryRun = false,
+            RunCheckpoint = true,
+            RunVacuum = false
+        }, SystemUser, LocalIp);
+
+        _logger.LogInformation("Scheduled pruning complete: {TotalRows} rows purged in {Elapsed}ms. Freed est: {Freed}",
+            pruneResult.TotalRowsDeleted, pruneResult.ElapsedMs, pruneResult.FreedSizeFormatted);
+
+        _lastPruneDateUtc = nowUtc.Date;
+    }
+
+    private async Task CheckAndExecuteBackupAsync(IDatabaseManagementService dbService, RetentionPolicyDto policies, DateTime nowUtc)
+    {
+        if (!policies.AutoBackupEnabled || nowUtc.Hour != policies.AutoBackupHourUtc || _lastBackupDateUtc?.Date == nowUtc.Date)
+        {
+            return;
+        }
+
+        _logger.LogInformation("Triggering scheduled database backup for {Date}", nowUtc.ToString("yyyy-MM-dd"));
+        var backupItem = await dbService.CreateBackupAsync(new CreateBackupRequest
+        {
+            Label = "scheduled",
+            Compress = true
+        }, SystemUser, LocalIp, "Scheduled");
+
+        _logger.LogInformation("Scheduled backup created: {FileName} ({Size})", backupItem.FileName, backupItem.SizeFormatted);
+
+        await RotateScheduledBackupsAsync(dbService, policies.BackupRetentionCount);
+
+        _lastBackupDateUtc = nowUtc.Date;
+    }
+
+    private async Task RotateScheduledBackupsAsync(IDatabaseManagementService dbService, int retentionCount)
+    {
+        var existingBackups = await dbService.GetBackupsAsync();
+        var scheduledBackups = existingBackups
+            .Where(b => b.Type == "Scheduled")
+            .OrderByDescending(b => b.CreatedAt)
+            .ToList();
+
+        if (scheduledBackups.Count <= retentionCount)
+        {
+            return;
+        }
+
+        var toDelete = scheduledBackups.Skip(retentionCount).ToList();
+        foreach (var oldBackup in toDelete)
+        {
+            _logger.LogInformation("Rotating old scheduled backup: {FileName}", oldBackup.FileName);
+            await dbService.DeleteBackupAsync(oldBackup.FileName, SystemUser, LocalIp);
+        }
+    }
+}

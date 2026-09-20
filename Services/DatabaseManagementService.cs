@@ -67,125 +67,102 @@ public class DatabaseManagementService : IDatabaseManagementService
     {
         var stats = new DatabaseStorageStatsDto();
 
-        // Query SQLite pragmas & table stats
-        using (var conn = new SqliteConnection(_connectionString))
+        using var conn = new SqliteConnection(_connectionString);
+        await conn.OpenAsync();
+
+        string activeDbPath = _dbFilePath;
+        try
         {
-            await conn.OpenAsync();
-
-            string activeDbPath = _dbFilePath;
-            try
+            var dbList = await conn.QueryAsync<(int seq, string name, string file)>("PRAGMA database_list;");
+            var mainDb = dbList.FirstOrDefault(d => d.name == "main");
+            if (!string.IsNullOrEmpty(mainDb.file) && File.Exists(mainDb.file))
             {
-                var dbList = await conn.QueryAsync<(int seq, string name, string file)>("PRAGMA database_list;");
-                var mainDb = dbList.FirstOrDefault(d => d.name == "main");
-                if (!string.IsNullOrEmpty(mainDb.file) && File.Exists(mainDb.file))
-                {
-                    activeDbPath = mainDb.file;
-                    _dbFilePath = mainDb.file;
-                }
-            }
-            catch { }
-
-            // Check file sizes
-            if (File.Exists(activeDbPath))
-            {
-                var fi = new FileInfo(activeDbPath);
-                stats.DatabaseSizeBytes = fi.Length;
-                stats.DatabaseSizeFormatted = FormatBytes(fi.Length);
-            }
-
-            string walPath = activeDbPath + "-wal";
-            if (File.Exists(walPath))
-            {
-                var fiWal = new FileInfo(walPath);
-                stats.WalSizeBytes = fiWal.Length;
-                stats.WalSizeFormatted = FormatBytes(fiWal.Length);
-            }
-
-            string shmPath = activeDbPath + "-shm";
-            if (File.Exists(shmPath))
-            {
-                var fiShm = new FileInfo(shmPath);
-                stats.ShmSizeBytes = fiShm.Length;
-                stats.ShmSizeFormatted = FormatBytes(fiShm.Length);
-            }
-
-            // Backups folder size
-            if (Directory.Exists(_backupDir))
-            {
-                var backupFiles = Directory.GetFiles(_backupDir, "*.*")
-                    .Where(f => f.EndsWith(".db", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-                stats.BackupCount = backupFiles.Count;
-                long totalBackupBytes = backupFiles.Sum(f => new FileInfo(f).Length);
-                stats.TotalBackupsSizeBytes = totalBackupBytes;
-                stats.TotalBackupsSizeFormatted = FormatBytes(totalBackupBytes);
-            }
-
-            stats.PageCount = await conn.ExecuteScalarAsync<long>("PRAGMA page_count;");
-            stats.PageSizeBytes = await conn.ExecuteScalarAsync<long>("PRAGMA page_size;");
-            stats.FreelistCount = await conn.ExecuteScalarAsync<long>("PRAGMA freelist_count;");
-            stats.FreelistSizeBytes = stats.FreelistCount * stats.PageSizeBytes;
-            stats.FreelistSizeFormatted = FormatBytes(stats.FreelistSizeBytes);
-
-            // Table Breakdown
-            var tables = new (string Name, string? TimeCol)[]
-            {
-                ("MetricSamples", "Timestamp"),
-                ("Traces", "Timestamp"),
-                ("Logs", "Timestamp"),
-                ("AlertRules", null),
-                ("Users", "CreatedAt"),
-                ("DatabaseSettings", "UpdatedAt"),
-                ("AdminAuditLogs", "Timestamp")
-            };
-
-            foreach (var (tName, tCol) in tables)
-            {
-                var tableStat = new TableStorageStatDto { TableName = tName };
-                try
-                {
-                    tableStat.RowCount = await conn.ExecuteScalarAsync<long>($"SELECT COUNT(*) FROM {tName};");
-                    if (tCol != null && tableStat.RowCount > 0)
-                    {
-                        var times = await conn.QuerySingleOrDefaultAsync<(string? Oldest, string? Newest)>(
-                            $"SELECT MIN({tCol}) as Oldest, MAX({tCol}) as Newest FROM {tName};"
-                        );
-                        if (!string.IsNullOrEmpty(times.Oldest) && DateTime.TryParse(times.Oldest, out var od))
-                            tableStat.OldestRecord = od;
-                        if (!string.IsNullOrEmpty(times.Newest) && DateTime.TryParse(times.Newest, out var nd))
-                            tableStat.NewestRecord = nd;
-                    }
-
-                    // Estimate size based on approximate bytes per row
-                    int approxRowBytes = tName switch
-                    {
-                        "Logs" => 280,
-                        "Traces" => 150,
-                        "MetricSamples" => 45,
-                        "AdminAuditLogs" => 160,
-                        _ => 100
-                    };
-                    tableStat.EstimatedSizeBytes = tableStat.RowCount * approxRowBytes;
-                    tableStat.EstimatedSizeFormatted = FormatBytes(tableStat.EstimatedSizeBytes);
-                    stats.Tables.Add(tableStat);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to collect stats for table {TableName}", tName);
-                }
+                activeDbPath = mainDb.file;
+                _dbFilePath = mainDb.file;
             }
         }
+        catch { }
 
-        // Check storage warning threshold
-        var policies = await GetRetentionPoliciesAsync();
-        stats.StorageWarningThresholdMb = policies.StorageWarningThresholdMb;
-        long totalStorageBytes = stats.DatabaseSizeBytes + stats.WalSizeBytes;
-        long thresholdBytes = stats.StorageWarningThresholdMb * 1024L * 1024L;
-
-        if (thresholdBytes > 0 && totalStorageBytes >= thresholdBytes)
+        // Check file sizes
+        if (File.Exists(activeDbPath))
         {
-            stats.IsStorageWarning = true;
-            stats.StorageWarningMessage = $"Active database storage ({FormatBytes(totalStorageBytes)}) has reached or exceeded your configured warning threshold of {stats.StorageWarningThresholdMb} MB. Please review retention policies or execute a pruning cycle.";
+            var fi = new FileInfo(activeDbPath);
+            stats.DatabaseSizeBytes = fi.Length;
+            stats.DatabaseSizeFormatted = FormatBytes(fi.Length);
+        }
+
+        string walPath = activeDbPath + "-wal";
+        if (File.Exists(walPath))
+        {
+            var fiWal = new FileInfo(walPath);
+            stats.WalSizeBytes = fiWal.Length;
+            stats.WalSizeFormatted = FormatBytes(fiWal.Length);
+        }
+
+        string shmPath = activeDbPath + "-shm";
+        if (File.Exists(shmPath))
+        {
+            var fiShm = new FileInfo(shmPath);
+            stats.ShmSizeBytes = fiShm.Length;
+            stats.ShmSizeFormatted = FormatBytes(fiShm.Length);
+        }
+
+        // Backups folder size
+        if (Directory.Exists(_backupDir))
+        {
+            var backupFiles = Directory.GetFiles(_backupDir, "*.*")
+                .Where(f => f.EndsWith(".db", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            stats.BackupCount = backupFiles.Count;
+            long totalBackupBytes = backupFiles.Sum(f => new FileInfo(f).Length);
+            stats.TotalBackupsSizeBytes = totalBackupBytes;
+            stats.TotalBackupsSizeFormatted = FormatBytes(totalBackupBytes);
+        }
+
+        stats.PageCount = await conn.ExecuteScalarAsync<long>("PRAGMA page_count;");
+        stats.PageSizeBytes = await conn.ExecuteScalarAsync<long>("PRAGMA page_size;");
+        stats.FreelistCount = await conn.ExecuteScalarAsync<long>("PRAGMA freelist_count;");
+        stats.FreelistSizeBytes = stats.FreelistCount * stats.PageSizeBytes;
+        stats.FreelistSizeFormatted = FormatBytes(stats.FreelistSizeBytes);
+
+        // Table Breakdown
+        var tables = new (string Name, string? TimeCol)[]
+        {
+            ("MetricSamples", "Timestamp"),
+            ("Traces", "Timestamp"),
+            ("Logs", "Timestamp"),
+            ("AlertRules", null),
+            ("Users", "CreatedAt"),
+            ("DatabaseSettings", "UpdatedAt"),
+            ("AdminAuditLogs", "Timestamp")
+        };
+
+        foreach (var (tName, tCol) in tables)
+        {
+            var tableStat = new TableStorageStatDto { TableName = tName };
+            try
+            {
+                tableStat.RowCount = await conn.ExecuteScalarAsync<long>($"SELECT COUNT(*) FROM {tName};");
+                if (tCol != null && tableStat.RowCount > 0)
+                {
+                    var times = await conn.QuerySingleOrDefaultAsync<(string? Oldest, string? Newest)>(
+                        $"SELECT MIN({tCol}) as Oldest, MAX({tCol}) as Newest FROM {tName};"
+                    );
+                    if (!string.IsNullOrEmpty(times.Oldest) && DateTime.TryParse(times.Oldest, out var od))
+                        tableStat.OldestRecord = od;
+                    if (!string.IsNullOrEmpty(times.Newest) && DateTime.TryParse(times.Newest, out var nd))
+                        tableStat.NewestRecord = nd;
+                }
+
+                int approxRowBytes = GetApproxRowBytes(tName);
+                tableStat.EstimatedSizeBytes = tableStat.RowCount * approxRowBytes;
+                tableStat.EstimatedSizeFormatted = FormatBytes(tableStat.EstimatedSizeBytes);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to query storage stats for table {Table}", tName);
+            }
+            stats.Tables.Add(tableStat);
         }
 
         return stats;
@@ -193,8 +170,7 @@ public class DatabaseManagementService : IDatabaseManagementService
 
     public async Task<DatabaseHealthDto> CheckHealthAsync()
     {
-        var health = new DatabaseHealthDto { CheckedAt = DateTime.UtcNow };
-
+        var health = new DatabaseHealthDto();
         using var conn = new SqliteConnection(_connectionString);
         await conn.OpenAsync();
 
@@ -226,22 +202,19 @@ public class DatabaseManagementService : IDatabaseManagementService
             "SELECT Key, Value, UpdatedAt, UpdatedBy FROM DatabaseSettings;"
         )).ToDictionary(x => x.Key, x => x);
 
-        string GetVal(string key, string fallback) =>
-            settings.TryGetValue(key, out var row) ? row.Value : fallback;
-
         var dto = new RetentionPolicyDto
         {
-            MetricsRetentionDays = int.TryParse(GetVal("RetentionMetricsDays", AppConstants.DatabaseManagement.DefaultRetentionMetricsDays.ToString()), out int mr) ? mr : AppConstants.DatabaseManagement.DefaultRetentionMetricsDays,
-            TracesRetentionDays = int.TryParse(GetVal("RetentionTracesDays", AppConstants.DatabaseManagement.DefaultRetentionTracesDays.ToString()), out int tr) ? tr : AppConstants.DatabaseManagement.DefaultRetentionTracesDays,
-            LogsRetentionDays = int.TryParse(GetVal("RetentionLogsDays", AppConstants.DatabaseManagement.DefaultRetentionLogsDays.ToString()), out int lr) ? lr : AppConstants.DatabaseManagement.DefaultRetentionLogsDays,
-            AlertsRetentionDays = int.TryParse(GetVal("RetentionAlertsDays", AppConstants.DatabaseManagement.DefaultRetentionAlertsDays.ToString()), out int ar) ? ar : AppConstants.DatabaseManagement.DefaultRetentionAlertsDays,
-            AuditLogsRetentionDays = int.TryParse(GetVal("RetentionAuditLogsDays", AppConstants.DatabaseManagement.DefaultRetentionAuditLogsDays.ToString()), out int alr) ? alr : AppConstants.DatabaseManagement.DefaultRetentionAuditLogsDays,
-            AutoPruneEnabled = bool.TryParse(GetVal("AutoPruneEnabled", AppConstants.DatabaseManagement.DefaultAutoPruneEnabled.ToString()), out bool ape) ? ape : AppConstants.DatabaseManagement.DefaultAutoPruneEnabled,
-            AutoPruneHourUtc = int.TryParse(GetVal("AutoPruneHourUtc", AppConstants.DatabaseManagement.DefaultAutoPruneHourUtc.ToString()), out int aph) ? aph : AppConstants.DatabaseManagement.DefaultAutoPruneHourUtc,
-            AutoBackupEnabled = bool.TryParse(GetVal("AutoBackupEnabled", AppConstants.DatabaseManagement.DefaultAutoBackupEnabled.ToString()), out bool abe) ? abe : AppConstants.DatabaseManagement.DefaultAutoBackupEnabled,
-            AutoBackupHourUtc = int.TryParse(GetVal("AutoBackupHourUtc", AppConstants.DatabaseManagement.DefaultAutoBackupHourUtc.ToString()), out int abh) ? abh : AppConstants.DatabaseManagement.DefaultAutoBackupHourUtc,
-            BackupRetentionCount = int.TryParse(GetVal("BackupRetentionCount", AppConstants.DatabaseManagement.DefaultBackupRetentionCount.ToString()), out int brc) ? brc : AppConstants.DatabaseManagement.DefaultBackupRetentionCount,
-            StorageWarningThresholdMb = long.TryParse(GetVal("StorageWarningThresholdMb", AppConstants.DatabaseManagement.DefaultStorageWarningThresholdMb.ToString()), out long sw) ? sw : AppConstants.DatabaseManagement.DefaultStorageWarningThresholdMb
+            MetricsRetentionDays = GetIntSetting(settings, "RetentionMetricsDays", AppConstants.DatabaseManagement.DefaultRetentionMetricsDays),
+            TracesRetentionDays = GetIntSetting(settings, "RetentionTracesDays", AppConstants.DatabaseManagement.DefaultRetentionTracesDays),
+            LogsRetentionDays = GetIntSetting(settings, "RetentionLogsDays", AppConstants.DatabaseManagement.DefaultRetentionLogsDays),
+            AlertsRetentionDays = GetIntSetting(settings, "RetentionAlertsDays", AppConstants.DatabaseManagement.DefaultRetentionAlertsDays),
+            AuditLogsRetentionDays = GetIntSetting(settings, "RetentionAuditLogsDays", AppConstants.DatabaseManagement.DefaultRetentionAuditLogsDays),
+            AutoPruneEnabled = GetBoolSetting(settings, "AutoPruneEnabled", AppConstants.DatabaseManagement.DefaultAutoPruneEnabled),
+            AutoPruneHourUtc = GetIntSetting(settings, "AutoPruneHourUtc", AppConstants.DatabaseManagement.DefaultAutoPruneHourUtc),
+            AutoBackupEnabled = GetBoolSetting(settings, "AutoBackupEnabled", AppConstants.DatabaseManagement.DefaultAutoBackupEnabled),
+            AutoBackupHourUtc = GetIntSetting(settings, "AutoBackupHourUtc", AppConstants.DatabaseManagement.DefaultAutoBackupHourUtc),
+            BackupRetentionCount = GetIntSetting(settings, "BackupRetentionCount", AppConstants.DatabaseManagement.DefaultBackupRetentionCount),
+            StorageWarningThresholdMb = GetLongSetting(settings, "StorageWarningThresholdMb", AppConstants.DatabaseManagement.DefaultStorageWarningThresholdMb)
         };
 
         if (settings.Values.Any(s => !string.IsNullOrEmpty(s.UpdatedAt)))
@@ -332,127 +305,19 @@ public class DatabaseManagementService : IDatabaseManagementService
 
         if (req.DryRun)
         {
-            // Count candidate rows without deleting
-            if (pruneMetrics)
-            {
-                long mCount = await conn.ExecuteScalarAsync<long>(
-                    "SELECT COUNT(*) FROM MetricSamples WHERE Timestamp < @cutoff;",
-                    new { cutoff = metricsCutoff }
-                );
-                result.DeletedCounts["MetricSamples"] = mCount;
-            }
-
-            if (pruneTraces)
-            {
-                long tCount = await conn.ExecuteScalarAsync<long>(
-                    "SELECT COUNT(*) FROM Traces WHERE Timestamp < @cutoff;",
-                    new { cutoff = tracesCutoff }
-                );
-                result.DeletedCounts["Traces"] = tCount;
-            }
-
-            if (pruneLogs)
-            {
-                long lCount = await conn.ExecuteScalarAsync<long>(
-                    "SELECT COUNT(*) FROM Logs WHERE Timestamp < @cutoff;",
-                    new { cutoff = logsCutoff }
-                );
-                result.DeletedCounts["Logs"] = lCount;
-            }
-
-            if (pruneAudit)
-            {
-                long aCount = await conn.ExecuteScalarAsync<long>(
-                    "SELECT COUNT(*) FROM AdminAuditLogs WHERE Timestamp < @cutoff;",
-                    new { cutoff = auditCutoff }
-                );
-                result.DeletedCounts["AdminAuditLogs"] = aCount;
-            }
+            if (pruneMetrics) result.DeletedCounts["MetricSamples"] = await CountOlderThanAsync(conn, "MetricSamples", metricsCutoff);
+            if (pruneTraces) result.DeletedCounts["Traces"] = await CountOlderThanAsync(conn, "Traces", tracesCutoff);
+            if (pruneLogs) result.DeletedCounts["Logs"] = await CountOlderThanAsync(conn, "Logs", logsCutoff);
+            if (pruneAudit) result.DeletedCounts["AdminAuditLogs"] = await CountOlderThanAsync(conn, "AdminAuditLogs", auditCutoff);
         }
         else
         {
-            // Execute batch deletion to avoid locking database
             int batchSize = AppConstants.DatabaseManagement.DefaultPruneBatchSize;
 
-            if (pruneMetrics)
-            {
-                long totalM = 0;
-                while (true)
-                {
-                    int affected = await conn.ExecuteAsync(@"
-                        DELETE FROM MetricSamples 
-                        WHERE Id IN (
-                            SELECT Id FROM MetricSamples 
-                            WHERE Timestamp < @cutoff 
-                            LIMIT @batchSize
-                        );",
-                        new { cutoff = metricsCutoff, batchSize }
-                    );
-                    totalM += affected;
-                    if (affected < batchSize) break;
-                }
-                result.DeletedCounts["MetricSamples"] = totalM;
-            }
-
-            if (pruneTraces)
-            {
-                long totalT = 0;
-                while (true)
-                {
-                    int affected = await conn.ExecuteAsync(@"
-                        DELETE FROM Traces 
-                        WHERE SpanId IN (
-                            SELECT SpanId FROM Traces 
-                            WHERE Timestamp < @cutoff 
-                            LIMIT @batchSize
-                        );",
-                        new { cutoff = tracesCutoff, batchSize }
-                    );
-                    totalT += affected;
-                    if (affected < batchSize) break;
-                }
-                result.DeletedCounts["Traces"] = totalT;
-            }
-
-            if (pruneLogs)
-            {
-                long totalL = 0;
-                while (true)
-                {
-                    int affected = await conn.ExecuteAsync(@"
-                        DELETE FROM Logs 
-                        WHERE Id IN (
-                            SELECT Id FROM Logs 
-                            WHERE Timestamp < @cutoff 
-                            LIMIT @batchSize
-                        );",
-                        new { cutoff = logsCutoff, batchSize }
-                    );
-                    totalL += affected;
-                    if (affected < batchSize) break;
-                }
-                result.DeletedCounts["Logs"] = totalL;
-            }
-
-            if (pruneAudit)
-            {
-                long totalA = 0;
-                while (true)
-                {
-                    int affected = await conn.ExecuteAsync(@"
-                        DELETE FROM AdminAuditLogs 
-                        WHERE Id IN (
-                            SELECT Id FROM AdminAuditLogs 
-                            WHERE Timestamp < @cutoff 
-                            LIMIT @batchSize
-                        );",
-                        new { cutoff = auditCutoff, batchSize }
-                    );
-                    totalA += affected;
-                    if (affected < batchSize) break;
-                }
-                result.DeletedCounts["AdminAuditLogs"] = totalA;
-            }
+            if (pruneMetrics) result.DeletedCounts["MetricSamples"] = await BatchDeleteOlderThanAsync(conn, "MetricSamples", "Id", metricsCutoff, batchSize);
+            if (pruneTraces) result.DeletedCounts["Traces"] = await BatchDeleteOlderThanAsync(conn, "Traces", "SpanId", tracesCutoff, batchSize);
+            if (pruneLogs) result.DeletedCounts["Logs"] = await BatchDeleteOlderThanAsync(conn, "Logs", "Id", logsCutoff, batchSize);
+            if (pruneAudit) result.DeletedCounts["AdminAuditLogs"] = await BatchDeleteOlderThanAsync(conn, "AdminAuditLogs", "Id", auditCutoff, batchSize);
 
             if (req.RunCheckpoint)
             {
@@ -478,16 +343,40 @@ public class DatabaseManagementService : IDatabaseManagementService
         result.ElapsedMs = sw.ElapsedMilliseconds;
         result.TotalRowsDeleted = result.DeletedCounts.Values.Sum();
 
-        long estimatedBytesFreed = 
-            (result.DeletedCounts.GetValueOrDefault("MetricSamples") * 45) +
-            (result.DeletedCounts.GetValueOrDefault("Traces") * 150) +
-            (result.DeletedCounts.GetValueOrDefault("Logs") * 280) +
-            (result.DeletedCounts.GetValueOrDefault("AdminAuditLogs") * 160);
+        long estimatedBytesFreed = result.DeletedCounts.Sum(kv => kv.Value * GetApproxRowBytes(kv.Key));
 
         result.FreedBytesEstimated = estimatedBytesFreed;
         result.FreedSizeFormatted = FormatBytes(estimatedBytesFreed);
 
         return result;
+    }
+
+    private static async Task<long> CountOlderThanAsync(SqliteConnection conn, string tableName, string cutoff)
+    {
+        return await conn.ExecuteScalarAsync<long>(
+            $"SELECT COUNT(*) FROM {tableName} WHERE Timestamp < @cutoff;",
+            new { cutoff }
+        );
+    }
+
+    private static async Task<long> BatchDeleteOlderThanAsync(SqliteConnection conn, string tableName, string idCol, string cutoff, int batchSize)
+    {
+        long total = 0;
+        while (true)
+        {
+            int affected = await conn.ExecuteAsync($@"
+                DELETE FROM {tableName} 
+                WHERE {idCol} IN (
+                    SELECT {idCol} FROM {tableName} 
+                    WHERE Timestamp < @cutoff 
+                    LIMIT @batchSize
+                );",
+                new { cutoff, batchSize }
+            );
+            total += affected;
+            if (affected < batchSize) break;
+        }
+        return total;
     }
 
     public async Task<string> RunVacuumAsync(string username, string ipAddress)
@@ -678,12 +567,10 @@ public class DatabaseManagementService : IDatabaseManagementService
             // 1. If compressed, decompress to temp file
             if (safeBackupName.EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
             {
-                using (var src = File.OpenRead(backupFilePath))
-                using (var gz = new GZipStream(src, CompressionMode.Decompress))
-                using (var dest = File.Create(tempExtractedDb))
-                {
-                    await gz.CopyToAsync(dest);
-                }
+                using var src = File.OpenRead(backupFilePath);
+                using var gz = new GZipStream(src, CompressionMode.Decompress);
+                using var dest = File.Create(tempExtractedDb);
+                await gz.CopyToAsync(dest);
             }
             else
             {
@@ -795,6 +682,27 @@ public class DatabaseManagementService : IDatabaseManagementService
     #endregion
 
     #region Helper Utilities
+    private static int GetApproxRowBytes(string tableName) => tableName switch
+    {
+        "MetricSamples" => 45,
+        "Traces" => 150,
+        "Logs" => 280,
+        "AlertRules" => 120,
+        "Users" => 180,
+        "DatabaseSettings" => 100,
+        "AdminAuditLogs" => 160,
+        _ => 100
+    };
+
+    private static int GetIntSetting(Dictionary<string, (string Key, string Value, string? UpdatedAt, string? UpdatedBy)> settings, string key, int fallback) =>
+        settings.TryGetValue(key, out var row) && int.TryParse(row.Value, out int val) ? val : fallback;
+
+    private static long GetLongSetting(Dictionary<string, (string Key, string Value, string? UpdatedAt, string? UpdatedBy)> settings, string key, long fallback) =>
+        settings.TryGetValue(key, out var row) && long.TryParse(row.Value, out long val) ? val : fallback;
+
+    private static bool GetBoolSetting(Dictionary<string, (string Key, string Value, string? UpdatedAt, string? UpdatedBy)> settings, string key, bool fallback) =>
+        settings.TryGetValue(key, out var row) && bool.TryParse(row.Value, out bool val) ? val : fallback;
+
     private static async Task<string> ComputeSha256Async(string filePath)
     {
         using var sha = SHA256.Create();
@@ -818,4 +726,3 @@ public class DatabaseManagementService : IDatabaseManagementService
     }
     #endregion
 }
-

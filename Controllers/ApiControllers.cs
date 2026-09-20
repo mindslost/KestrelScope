@@ -7,11 +7,35 @@ using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Security.Claims;
+using System.Threading.Tasks;
 using KestrelScope.Constants;
 using KestrelScope.Models;
 using KestrelScope.Services;
 
 namespace KestrelScope.Controllers;
+
+internal static class QueryHelper
+{
+    public static int NormalizeWindow(int minutes, int defaultMinutes = AppConstants.QueryDefaults.DefaultWindowMinutes, int maxMinutes = 1440)
+    {
+        return minutes <= 0 ? defaultMinutes : Math.Min(minutes, maxMinutes);
+    }
+
+    public static int NormalizeLimit(int limit, int defaultLimit = AppConstants.QueryDefaults.DefaultLimit, int maxLimit = AppConstants.QueryDefaults.MaxLimit)
+    {
+        return limit <= 0 || limit > maxLimit ? defaultLimit : limit;
+    }
+
+    public static string? TrimToNull(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    public static string? TrimToUpperNull(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToUpperInvariant();
+    }
+}
 
 #region Auth Controller (/api/auth)
 [ApiController]
@@ -75,21 +99,21 @@ public class AuthController : ControllerBase
     [HttpGet("me")]
     public IActionResult Me()
     {
-        if (User.Identity?.IsAuthenticated == true)
+        if (User.Identity?.IsAuthenticated != true)
         {
             return Ok(new
             {
-                username = User.Identity.Name,
-                role = User.FindFirst(ClaimTypes.Role)?.Value ?? AppConstants.UserRoles.StandardNormalized,
-                isAuthenticated = true
+                username = (string?)null,
+                role = (string?)null,
+                isAuthenticated = false
             });
         }
 
         return Ok(new
         {
-            username = (string?)null,
-            role = (string?)null,
-            isAuthenticated = false
+            username = User.Identity.Name,
+            role = User.FindFirst(ClaimTypes.Role)?.Value ?? AppConstants.UserRoles.StandardNormalized,
+            isAuthenticated = true
         });
     }
 }
@@ -138,8 +162,8 @@ public class MetricsController : ControllerBase
         if (string.IsNullOrWhiteSpace(service) || string.IsNullOrWhiteSpace(metric))
             return BadRequest(new { error = "Service and metric query parameters are required." });
 
-        if (minutes <= 0) minutes = AppConstants.QueryDefaults.DefaultWindowMinutes;
-        var windowStart = DateTime.UtcNow.AddMinutes(-minutes).ToString("o");
+        int normalizedMinutes = QueryHelper.NormalizeWindow(minutes);
+        var windowStart = DateTime.UtcNow.AddMinutes(-normalizedMinutes).ToString("o");
 
         using var conn = new SqliteConnection(_dbConn);
         var series = await conn.QueryAsync<MetricPoint>(
@@ -232,16 +256,14 @@ public class AlertsController : ControllerBase
             );
             return Ok(new { status = "updated", id = rule.Id.Value });
         }
-        else
-        {
-            long newId = await conn.QuerySingleAsync<long>(
-                @"INSERT INTO AlertRules (Name, MetricName, Threshold, WindowMinutes, WebhookUrl, IsEnabled)
-                  VALUES (@Name, @MetricName, @Threshold, @WindowMinutes, @WebhookUrl, COALESCE(@IsEnabled, 1));
-                  SELECT last_insert_rowid();",
-                rule
-            );
-            return Ok(new { status = "created", id = newId });
-        }
+
+        long newId = await conn.QuerySingleAsync<long>(
+            @"INSERT INTO AlertRules (Name, MetricName, Threshold, WindowMinutes, WebhookUrl, IsEnabled)
+              VALUES (@Name, @MetricName, @Threshold, @WindowMinutes, @WebhookUrl, COALESCE(@IsEnabled, 1));
+              SELECT last_insert_rowid();",
+            rule
+        );
+        return Ok(new { status = "created", id = newId });
     }
 
     [HttpPatch("{id}/toggle")]
@@ -445,9 +467,9 @@ public class TracesController : ControllerBase
         [FromQuery] int minutes = AppConstants.QueryDefaults.DefaultWindowMinutes,
         [FromQuery] int limit = AppConstants.QueryDefaults.DefaultLimit)
     {
-        if (minutes <= 0) minutes = AppConstants.QueryDefaults.DefaultWindowMinutes;
-        if (limit <= 0 || limit > AppConstants.QueryDefaults.MaxLimit) limit = AppConstants.QueryDefaults.DefaultLimit;
-        var windowStart = DateTime.UtcNow.AddMinutes(-minutes).ToString("o");
+        int normalizedMinutes = QueryHelper.NormalizeWindow(minutes);
+        int normalizedLimit = QueryHelper.NormalizeLimit(limit);
+        var windowStart = DateTime.UtcNow.AddMinutes(-normalizedMinutes).ToString("o");
 
         using var conn = new SqliteConnection(_dbConn);
 
@@ -459,7 +481,13 @@ public class TracesController : ControllerBase
             ORDER BY Timestamp DESC
             LIMIT @limit;";
 
-        var spans = await conn.QueryAsync<TraceSpanDto>(sql, new { windowStart, service, traceId, limit });
+        var spans = await conn.QueryAsync<TraceSpanDto>(sql, new
+        {
+            windowStart,
+            service = QueryHelper.TrimToNull(service),
+            traceId = QueryHelper.TrimToNull(traceId),
+            limit = normalizedLimit
+        });
         return Ok(spans);
     }
 
@@ -501,9 +529,9 @@ public class LogsController : ControllerBase
         [FromQuery] int minutes = AppConstants.QueryDefaults.DefaultWindowMinutes,
         [FromQuery] int limit = AppConstants.QueryDefaults.DefaultLimit)
     {
-        if (minutes <= 0) minutes = AppConstants.QueryDefaults.DefaultWindowMinutes;
-        if (limit <= 0 || limit > AppConstants.QueryDefaults.MaxLimit) limit = AppConstants.QueryDefaults.DefaultLimit;
-        var windowStart = DateTime.UtcNow.AddMinutes(-minutes).ToString("o");
+        int normalizedMinutes = QueryHelper.NormalizeWindow(minutes);
+        int normalizedLimit = QueryHelper.NormalizeLimit(limit);
+        var windowStart = DateTime.UtcNow.AddMinutes(-normalizedMinutes).ToString("o");
 
         using var conn = new SqliteConnection(_dbConn);
 
@@ -518,17 +546,18 @@ public class LogsController : ControllerBase
             ORDER BY Timestamp DESC
             LIMIT @limit;";
 
-        string? likeQuery = string.IsNullOrWhiteSpace(query) ? null : $"%{query.Trim()}%";
+        string? cleanQuery = QueryHelper.TrimToNull(query);
+        string? likeQuery = cleanQuery != null ? $"%{cleanQuery}%" : null;
 
         var logs = await conn.QueryAsync<LogRecordDto>(sql, new
         {
             windowStart,
-            service = string.IsNullOrWhiteSpace(service) ? null : service.Trim(),
-            severity = string.IsNullOrWhiteSpace(severity) ? null : severity.Trim().ToUpperInvariant(),
-            traceId = string.IsNullOrWhiteSpace(traceId) ? null : traceId.Trim(),
-            query = string.IsNullOrWhiteSpace(query) ? null : query.Trim(),
+            service = QueryHelper.TrimToNull(service),
+            severity = QueryHelper.TrimToUpperNull(severity),
+            traceId = QueryHelper.TrimToNull(traceId),
+            query = cleanQuery,
             likeQuery,
-            limit
+            limit = normalizedLimit
         });
 
         return Ok(logs);
@@ -545,5 +574,3 @@ public class LogsController : ControllerBase
     }
 }
 #endregion
-
-

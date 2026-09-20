@@ -3,6 +3,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
 using KestrelScope.Constants;
@@ -68,42 +69,17 @@ public class OtlpIngestionController : ControllerBase
 
                     string metricName = nameProp.GetString() ?? TelemetryConstants.SpanNames.UnnamedMetric;
 
-                    // Handle Sum metrics
-                    if (metric.TryGetProperty(TelemetryConstants.OtlpFields.Sum, out var sum) &&
-                        sum.TryGetProperty(TelemetryConstants.OtlpFields.DataPoints, out var sumDataPoints) &&
-                        sumDataPoints.ValueKind == JsonValueKind.Array)
+                    foreach (var dp in GetDataPoints(metric))
                     {
-                        foreach (var dp in sumDataPoints.EnumerateArray())
-                        {
-                            if (TryExtractSample(dp, out double val, out DateTime timestamp))
-                            {
-                                paramService.Value = serviceName;
-                                paramMetric.Value = metricName;
-                                paramVal.Value = val;
-                                paramTime.Value = timestamp.ToString("o");
-                                await cmd.ExecuteNonQueryAsync();
-                                sampleCount++;
-                            }
-                        }
-                    }
+                        if (!TryExtractSample(dp, out double val, out DateTime timestamp))
+                            continue;
 
-                    // Handle Gauge metrics
-                    if (metric.TryGetProperty(TelemetryConstants.OtlpFields.Gauge, out var gauge) &&
-                        gauge.TryGetProperty(TelemetryConstants.OtlpFields.DataPoints, out var gaugeDataPoints) &&
-                        gaugeDataPoints.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var dp in gaugeDataPoints.EnumerateArray())
-                        {
-                            if (TryExtractSample(dp, out double val, out DateTime timestamp))
-                            {
-                                paramService.Value = serviceName;
-                                paramMetric.Value = metricName;
-                                paramVal.Value = val;
-                                paramTime.Value = timestamp.ToString("o");
-                                await cmd.ExecuteNonQueryAsync();
-                                sampleCount++;
-                            }
-                        }
+                        paramService.Value = serviceName;
+                        paramMetric.Value = metricName;
+                        paramVal.Value = val;
+                        paramTime.Value = timestamp.ToString("o");
+                        await cmd.ExecuteNonQueryAsync();
+                        sampleCount++;
                     }
                 }
             }
@@ -259,28 +235,8 @@ public class OtlpIngestionController : ControllerBase
                         ? sVal 
                         : (int)OtelSeverity.Info;
 
-                    string body = "";
-                    if (log.TryGetProperty(TelemetryConstants.OtlpFields.Body, out var bProp))
-                    {
-                        if (bProp.ValueKind == JsonValueKind.String)
-                        {
-                            body = bProp.GetString() ?? "";
-                        }
-                        else if (bProp.ValueKind == JsonValueKind.Object && bProp.TryGetProperty(TelemetryConstants.OtlpFields.StringValue, out var strVal))
-                        {
-                            body = strVal.GetString() ?? "";
-                        }
-                        else
-                        {
-                            body = bProp.GetRawText();
-                        }
-                    }
-
-                    string attrsJson = "{}";
-                    if (log.TryGetProperty(TelemetryConstants.OtlpFields.Attributes, out var attrs))
-                    {
-                        attrsJson = attrs.GetRawText();
-                    }
+                    string body = ExtractLogBody(log);
+                    string attrsJson = ExtractLogAttributes(log);
 
                     pTime.Value = timestamp.ToString("o");
                     pTraceId.Value = string.IsNullOrEmpty(traceId) ? DBNull.Value : traceId;
@@ -302,23 +258,65 @@ public class OtlpIngestionController : ControllerBase
         return Ok(new { status = "success", ingested = logCount });
     }
 
+    private static IEnumerable<JsonElement> GetDataPoints(JsonElement metric)
+    {
+        if (metric.TryGetProperty(TelemetryConstants.OtlpFields.Sum, out var sum) &&
+            sum.TryGetProperty(TelemetryConstants.OtlpFields.DataPoints, out var sumDataPoints) &&
+            sumDataPoints.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var dp in sumDataPoints.EnumerateArray())
+                yield return dp;
+        }
+
+        if (metric.TryGetProperty(TelemetryConstants.OtlpFields.Gauge, out var gauge) &&
+            gauge.TryGetProperty(TelemetryConstants.OtlpFields.DataPoints, out var gaugeDataPoints) &&
+            gaugeDataPoints.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var dp in gaugeDataPoints.EnumerateArray())
+                yield return dp;
+        }
+    }
+
+    private static string ExtractLogBody(JsonElement log)
+    {
+        if (!log.TryGetProperty(TelemetryConstants.OtlpFields.Body, out var bProp))
+            return string.Empty;
+
+        return bProp.ValueKind switch
+        {
+            JsonValueKind.String => bProp.GetString() ?? string.Empty,
+            JsonValueKind.Object when bProp.TryGetProperty(TelemetryConstants.OtlpFields.StringValue, out var strVal) => strVal.GetString() ?? string.Empty,
+            _ => bProp.GetRawText()
+        };
+    }
+
+    private static string ExtractLogAttributes(JsonElement log)
+    {
+        return log.TryGetProperty(TelemetryConstants.OtlpFields.Attributes, out var attrs)
+            ? attrs.GetRawText()
+            : "{}";
+    }
+
     private static string ExtractServiceName(JsonElement root)
     {
-        if (root.TryGetProperty(TelemetryConstants.OtlpFields.Resource, out var res) &&
-            res.TryGetProperty(TelemetryConstants.OtlpFields.Attributes, out var attrs) &&
-            attrs.ValueKind == JsonValueKind.Array)
+        if (!root.TryGetProperty(TelemetryConstants.OtlpFields.Resource, out var res) ||
+            !res.TryGetProperty(TelemetryConstants.OtlpFields.Attributes, out var attrs) ||
+            attrs.ValueKind != JsonValueKind.Array)
         {
-            foreach (var attr in attrs.EnumerateArray())
+            return TelemetryConstants.ServiceNames.UnknownService;
+        }
+
+        foreach (var attr in attrs.EnumerateArray())
+        {
+            if (attr.TryGetProperty(TelemetryConstants.OtlpFields.Key, out var key) && 
+                key.GetString() == TelemetryConstants.OtlpAttributes.ServiceName &&
+                attr.TryGetProperty(TelemetryConstants.OtlpFields.Value, out var val) &&
+                val.TryGetProperty(TelemetryConstants.OtlpFields.StringValue, out var str))
             {
-                if (attr.TryGetProperty(TelemetryConstants.OtlpFields.Key, out var key) && 
-                    key.GetString() == TelemetryConstants.OtlpAttributes.ServiceName &&
-                    attr.TryGetProperty(TelemetryConstants.OtlpFields.Value, out var val))
-                {
-                    if (val.TryGetProperty(TelemetryConstants.OtlpFields.StringValue, out var str))
-                        return str.GetString() ?? TelemetryConstants.ServiceNames.UnknownService;
-                }
+                return str.GetString() ?? TelemetryConstants.ServiceNames.UnknownService;
             }
         }
+
         return TelemetryConstants.ServiceNames.UnknownService;
     }
 
@@ -368,31 +366,32 @@ public class OtlpIngestionController : ControllerBase
 
     private static string ExtractStatusCode(JsonElement span)
     {
-        if (span.TryGetProperty(TelemetryConstants.OtlpFields.Status, out var status))
+        if (!span.TryGetProperty(TelemetryConstants.OtlpFields.Status, out var status) ||
+            !status.TryGetProperty(TelemetryConstants.OtlpFields.Code, out var code))
         {
-            if (status.TryGetProperty(TelemetryConstants.OtlpFields.Code, out var code))
-            {
-                if (code.ValueKind == JsonValueKind.Number)
-                {
-                    return code.GetInt32() switch
-                    {
-                        (int)SpanStatusCode.Ok => TelemetryConstants.SpanStatusNames.Ok,
-                        (int)SpanStatusCode.Error => TelemetryConstants.SpanStatusNames.Error,
-                        _ => TelemetryConstants.SpanStatusNames.Unset
-                    };
-                }
-                if (code.ValueKind == JsonValueKind.String)
-                {
-                    string str = code.GetString() ?? "";
-                    if (str.Contains(TelemetryConstants.SpanStatusNames.Error, StringComparison.OrdinalIgnoreCase)) 
-                        return TelemetryConstants.SpanStatusNames.Error;
-                    if (str.Contains(TelemetryConstants.SpanStatusNames.Ok, StringComparison.OrdinalIgnoreCase)) 
-                        return TelemetryConstants.SpanStatusNames.Ok;
-                    return str;
-                }
-            }
+            return TelemetryConstants.SpanStatusNames.Unset;
         }
+
+        if (code.ValueKind == JsonValueKind.Number)
+        {
+            return code.GetInt32() switch
+            {
+                (int)SpanStatusCode.Ok => TelemetryConstants.SpanStatusNames.Ok,
+                (int)SpanStatusCode.Error => TelemetryConstants.SpanStatusNames.Error,
+                _ => TelemetryConstants.SpanStatusNames.Unset
+            };
+        }
+
+        if (code.ValueKind == JsonValueKind.String)
+        {
+            string str = code.GetString() ?? string.Empty;
+            if (str.Contains(TelemetryConstants.SpanStatusNames.Error, StringComparison.OrdinalIgnoreCase)) 
+                return TelemetryConstants.SpanStatusNames.Error;
+            if (str.Contains(TelemetryConstants.SpanStatusNames.Ok, StringComparison.OrdinalIgnoreCase)) 
+                return TelemetryConstants.SpanStatusNames.Ok;
+            return str;
+        }
+
         return TelemetryConstants.SpanStatusNames.Unset;
     }
 }
-

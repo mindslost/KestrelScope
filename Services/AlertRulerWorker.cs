@@ -75,88 +75,105 @@ public class AlertRulerWorker : BackgroundService
         using var connection = new SqliteConnection(_dbConn);
         await connection.OpenAsync(ct);
 
-        var rules = new List<(int Id, string Name, string Metric, double Threshold, int Window, string Webhook)>();
-        using (var ruleCmd = connection.CreateCommand())
-        {
-            ruleCmd.CommandText = "SELECT Id, Name, MetricName, Threshold, WindowMinutes, WebhookUrl FROM AlertRules WHERE IsEnabled = 1;";
-            using var reader = await ruleCmd.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct))
-            {
-                rules.Add((
-                    reader.GetInt32(0),
-                    reader.GetString(1),
-                    reader.GetString(2),
-                    reader.GetDouble(3),
-                    reader.GetInt32(4),
-                    reader.GetString(5)
-                ));
-            }
-        }
-
+        var rules = await FetchActiveRulesAsync(connection, ct);
         int alertsTriggered = 0;
         var currentCycleBreaches = new HashSet<(int RuleId, string ServiceName)>();
 
         foreach (var rule in rules)
         {
-            using var evalCmd = connection.CreateCommand();
-            evalCmd.CommandText = @"
-                SELECT ServiceName, AVG(Value) as AvgValue 
-                FROM MetricSamples 
-                WHERE MetricName = @metric AND Timestamp >= @windowStart 
-                GROUP BY ServiceName 
-                HAVING AvgValue > @threshold;";
-
-            evalCmd.Parameters.AddWithValue("@metric", rule.Metric);
-            evalCmd.Parameters.AddWithValue("@windowStart", DateTime.UtcNow.AddMinutes(-rule.Window).ToString("o"));
-            evalCmd.Parameters.AddWithValue("@threshold", rule.Threshold);
-
-            using var evalReader = await evalCmd.ExecuteReaderAsync(ct);
-            while (await evalReader.ReadAsync(ct))
-            {
-                string service = evalReader.GetString(0);
-                double avgValue = evalReader.GetDouble(1);
-                var alertKey = (rule.Id, service);
-                currentCycleBreaches.Add(alertKey);
-
-                // Check state management: if already firing, suppress notification to prevent notification fatigue
-                bool isNewlyFiring = _activeAlerts.TryAdd(alertKey, DateTime.UtcNow);
-
-                if (isNewlyFiring)
-                {
-                    alertsTriggered++;
-                    _logger.LogWarning("ALERT TRIGGERED [FIRING]: Rule '{Rule}' breached by {Service}. Avg Value: {Val:F2} > Threshold: {Threshold}",
-                        rule.Name, service, avgValue, rule.Threshold);
-
-                    await DispatchWebhookAsync(rule, service, avgValue, AppConstants.Alerts.StateFiring, ct);
-                }
-                else
-                {
-                    _logger.LogDebug("Alert '{Rule}' for {Service} continues to breach ({Val:F2}), notification suppressed (already FIRING).",
-                        rule.Name, service, avgValue);
-                }
-            }
+            alertsTriggered += await EvaluateRuleAsync(connection, rule, currentCycleBreaches, ct);
         }
 
-        // Check for resolved alerts
-        foreach (var activeKey in _activeAlerts.Keys)
-        {
-            if (!currentCycleBreaches.Contains(activeKey))
-            {
-                if (_activeAlerts.TryRemove(activeKey, out _))
-                {
-                    var resolvedRule = rules.Find(r => r.Id == activeKey.RuleId);
-                    string ruleName = resolvedRule != default ? resolvedRule.Name : $"Rule #{activeKey.RuleId}";
-                    _logger.LogInformation("ALERT RESOLVED: Rule '{Rule}' normalized for service {Service}.", ruleName, activeKey.ServiceName);
-
-                    if (resolvedRule != default)
-                    {
-                        await DispatchWebhookAsync(resolvedRule, activeKey.ServiceName, 0.0, AppConstants.Alerts.StateResolved, ct);
-                    }
-                }
-            }
-        }
+        await ResolveNormalizedAlertsAsync(rules, currentCycleBreaches, ct);
 
         return alertsTriggered;
+    }
+
+    private static async Task<List<(int Id, string Name, string Metric, double Threshold, int Window, string Webhook)>> FetchActiveRulesAsync(
+        SqliteConnection connection, CancellationToken ct)
+    {
+        var rules = new List<(int Id, string Name, string Metric, double Threshold, int Window, string Webhook)>();
+        using var ruleCmd = connection.CreateCommand();
+        ruleCmd.CommandText = "SELECT Id, Name, MetricName, Threshold, WindowMinutes, WebhookUrl FROM AlertRules WHERE IsEnabled = 1;";
+        using var reader = await ruleCmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            rules.Add((
+                reader.GetInt32(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetDouble(3),
+                reader.GetInt32(4),
+                reader.GetString(5)
+            ));
+        }
+        return rules;
+    }
+
+    private async Task<int> EvaluateRuleAsync(
+        SqliteConnection connection,
+        (int Id, string Name, string Metric, double Threshold, int Window, string Webhook) rule,
+        HashSet<(int RuleId, string ServiceName)> currentCycleBreaches,
+        CancellationToken ct)
+    {
+        int newlyTriggered = 0;
+        using var evalCmd = connection.CreateCommand();
+        evalCmd.CommandText = @"
+            SELECT ServiceName, AVG(Value) as AvgValue 
+            FROM MetricSamples 
+            WHERE MetricName = @metric AND Timestamp >= @windowStart 
+            GROUP BY ServiceName 
+            HAVING AvgValue > @threshold;";
+
+        evalCmd.Parameters.AddWithValue("@metric", rule.Metric);
+        evalCmd.Parameters.AddWithValue("@windowStart", DateTime.UtcNow.AddMinutes(-rule.Window).ToString("o"));
+        evalCmd.Parameters.AddWithValue("@threshold", rule.Threshold);
+
+        using var evalReader = await evalCmd.ExecuteReaderAsync(ct);
+        while (await evalReader.ReadAsync(ct))
+        {
+            string service = evalReader.GetString(0);
+            double avgValue = evalReader.GetDouble(1);
+            var alertKey = (rule.Id, service);
+            currentCycleBreaches.Add(alertKey);
+
+            if (_activeAlerts.TryAdd(alertKey, DateTime.UtcNow))
+            {
+                newlyTriggered++;
+                _logger.LogWarning("ALERT TRIGGERED [FIRING]: Rule '{Rule}' breached by {Service}. Avg Value: {Val:F2} > Threshold: {Threshold}",
+                    rule.Name, service, avgValue, rule.Threshold);
+
+                await DispatchWebhookAsync(rule, service, avgValue, AppConstants.Alerts.StateFiring, ct);
+            }
+            else
+            {
+                _logger.LogDebug("Alert '{Rule}' for {Service} continues to breach ({Val:F2}), notification suppressed (already FIRING).",
+                    rule.Name, service, avgValue);
+            }
+        }
+
+        return newlyTriggered;
+    }
+
+    private async Task ResolveNormalizedAlertsAsync(
+        List<(int Id, string Name, string Metric, double Threshold, int Window, string Webhook)> rules,
+        HashSet<(int RuleId, string ServiceName)> currentCycleBreaches,
+        CancellationToken ct)
+    {
+        foreach (var activeKey in _activeAlerts.Keys)
+        {
+            if (currentCycleBreaches.Contains(activeKey)) continue;
+            if (!_activeAlerts.TryRemove(activeKey, out _)) continue;
+
+            var resolvedRule = rules.Find(r => r.Id == activeKey.RuleId);
+            string ruleName = resolvedRule != default ? resolvedRule.Name : $"Rule #{activeKey.RuleId}";
+            _logger.LogInformation("ALERT RESOLVED: Rule '{Rule}' normalized for service {Service}.", ruleName, activeKey.ServiceName);
+
+            if (resolvedRule != default)
+            {
+                await DispatchWebhookAsync(resolvedRule, activeKey.ServiceName, 0.0, AppConstants.Alerts.StateResolved, ct);
+            }
+        }
     }
 
     private async Task DispatchWebhookAsync((int Id, string Name, string Metric, double Threshold, int Window, string Webhook) rule, string service, double avgValue, string state, CancellationToken ct)
@@ -167,7 +184,7 @@ public class AlertRulerWorker : BackgroundService
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(TimeSpan.FromSeconds(AppConstants.Alerts.WebhookTimeoutSeconds)); // Resilient webhook timeout
+            cts.CancelAfter(TimeSpan.FromSeconds(AppConstants.Alerts.WebhookTimeoutSeconds));
 
             var payload = JsonSerializer.Serialize(new
             {

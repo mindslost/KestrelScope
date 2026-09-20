@@ -38,26 +38,19 @@ builder.Services.AddAuthentication(AppConstants.Auth.CookieScheme)
     {
         options.Cookie.Name = AppConstants.Auth.CookieName;
         options.LoginPath = AppConstants.Auth.LoginPath;
-        options.Events.OnRedirectToLogin = ctx =>
+        static Task HandleApiRedirect(Microsoft.AspNetCore.Authentication.RedirectContext<Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationOptions> ctx, int apiStatusCode)
         {
             if (ctx.Request.Path.StartsWithSegments("/api"))
             {
-                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                ctx.Response.StatusCode = apiStatusCode;
                 return Task.CompletedTask;
             }
             ctx.Response.Redirect(ctx.RedirectUri);
             return Task.CompletedTask;
-        };
-        options.Events.OnRedirectToAccessDenied = ctx =>
-        {
-            if (ctx.Request.Path.StartsWithSegments("/api"))
-            {
-                ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
-                return Task.CompletedTask;
-            }
-            ctx.Response.Redirect(ctx.RedirectUri);
-            return Task.CompletedTask;
-        };
+        }
+
+        options.Events.OnRedirectToLogin = ctx => HandleApiRedirect(ctx, StatusCodes.Status401Unauthorized);
+        options.Events.OnRedirectToAccessDenied = ctx => HandleApiRedirect(ctx, StatusCodes.Status403Forbidden);
     });
 
 builder.Services.AddSingleton<AlertRulerWorker>();
